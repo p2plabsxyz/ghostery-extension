@@ -89,9 +89,9 @@ const Options = {
   pauseAssistant: true,
 
   // Onboarding
-  terms: false,
-  feedback: true,
-  onboarding: false,
+  terms: true,
+  feedback: false,
+  onboarding: true,
 
   // UI
   panel: { statsType: 'graph', notifications: true },
