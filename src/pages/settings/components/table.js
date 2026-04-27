@@ -33,11 +33,6 @@ export default {
       opacity: 0.5;
     }
 
-    :host([responsive]) div ::slotted(*) {
-      border: 1px solid var(--border-primary);
-      border-radius: 8px;
-    }
-
     header {
       background: var(--background-secondary);
       border-radius: 8px;
@@ -50,6 +45,11 @@ export default {
 
     div ::slotted(*:last-child) {
       border-bottom: none;
+    }
+
+    :host([responsive]) div ::slotted(*) {
+      border: 1px solid var(--border-primary);
+      border-radius: 8px;
     }
 
     @media screen and (min-width: 768px) {

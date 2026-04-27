@@ -15,7 +15,7 @@ import Config from '/store/config.js';
 
 import * as OptionsObserver from '/utils/options-observer.js';
 import { hasWTMStats } from '/utils/wtm-stats';
-import { updateEngines } from './adblocker/index.js';
+import { updateEngines } from './adblocker/engines.js';
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   switch (msg.action) {
@@ -60,43 +60,32 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         },
       );
       break;
+
     case 'updateEngines':
       updateEngines({ cache: false }).then(() => {
         sendResponse();
-        console.info('[helpers] "updateEngines" response...');
+        console.debug('[helpers] "updateEngines" finished');
       });
       return true;
+
     case 'idle':
       OptionsObserver.waitForIdle().then(() => {
-        sendResponse('done');
-        console.info('[helpers] "idleOptionsObservers" response...');
+        sendResponse();
+        console.debug('[helpers] "idleOptionsObservers" finished');
       });
       return true;
+
+    case 'keepAlive':
+      console.debug('[helpers] Received "keepAlive" message');
+      break;
 
     // Messages for e2e tests
 
     case 'e2e:idleOptionsObservers':
       OptionsObserver.waitForIdle().then(() => {
         sendResponse('done');
-        console.info('[helpers] "idleOptionsObservers" response...');
-      });
-      return true;
-
-    case 'e2e:setConfigFlags':
-      store.resolve(Config).then(async (config) => {
-        const flags = {};
-
-        for (const name of Object.keys(config.flags)) {
-          flags[name] = null;
-        }
-
-        for (const name of msg.flags) {
-          flags[name] = { enabled: true };
-        }
-
-        await store.set(Config, { flags });
-        sendResponse('done');
-      });
+        console.debug('[helpers] "idleOptionsObservers" finished');
+      }, sendResponse);
       return true;
 
     case 'e2e:setConfigDomains':
@@ -110,14 +99,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         Object.assign(domains, msg.domains);
 
         await store.set(Config, { domains });
+
         sendResponse('done');
-      });
+        console.debug('[helpers] "setConfigDomains" finished');
+      }, sendResponse);
       return true;
 
-    case 'e2e:reloadExtension':
-      setTimeout(() => chrome.runtime.reload(), 2000);
-      sendResponse('done');
-      break;
+    case 'e2e:managedConfig':
+      chrome.storage.local.set({ managedConfig: msg.config }).then(() => {
+        sendResponse('done');
+        console.debug('[helpers] "managedConfig" finished');
+      }, sendResponse);
+      return true;
   }
 
   return false;

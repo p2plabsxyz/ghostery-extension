@@ -12,8 +12,8 @@
 import './onboarding.js';
 import './config.js';
 
-import './autoconsent.js';
 import './adblocker/index.js';
+import './never-consent/index.js';
 import './cookies.js';
 import './custom-filters.js';
 import './element-picker.js';
@@ -37,3 +37,4 @@ import './reporting/index.js';
 import './telemetry/index.js';
 
 import './devtools.js';
+import './storage.js';

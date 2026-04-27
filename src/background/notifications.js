@@ -18,12 +18,11 @@ import Notification from '/store/notification.js';
 import Options from '/store/options.js';
 
 import { getOS, isOpera, isWebkit } from '/utils/browser-info.js';
-import { debugMode } from '/utils/debug.js';
 import * as notifications from '/utils/notifications.js';
 import { isSerpSupported } from '/utils/opera.js';
 import { checkStorage } from '/utils/storage.js';
+import * as telemetry from '/utils/telemetry.js';
 
-import * as telemetry from './telemetry/index.js';
 import { SURVEY_URL } from './onboarding.js';
 
 export async function openNotification({ id, tabId, shownLimit = 0, delay, params, position }) {
@@ -61,7 +60,7 @@ export async function openNotification({ id, tabId, shownLimit = 0, delay, param
       action: notifications.MOUNT_ACTION,
       url,
       position,
-      debug: debugMode,
+      debug: __DEBUG__,
     });
 
     // Update notification stats if mounted successfully
@@ -116,7 +115,11 @@ if (
   getOS() !== 'android' // Edge on Android (and possibly other browsers)
 ) {
   chrome.webNavigation.onCompleted.addListener(async (details) => {
-    if (details.frameId !== 0 || (await chrome.action.getUserSettings()).isOnToolbar) {
+    if (
+      !details.url.startsWith('http') ||
+      details.frameId !== 0 ||
+      (await chrome.action.getUserSettings()).isOnToolbar
+    ) {
       return;
     }
 
@@ -139,7 +142,7 @@ if (
 const REVIEW_NOTIFICATION_DELAY = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 chrome.webNavigation.onCompleted.addListener(async (details) => {
-  if (details.frameId !== 0) return;
+  if (!details.url.startsWith('http') || details.frameId !== 0) return;
 
   const { installDate } = await telemetry.getStorage();
   if (!installDate) return;
@@ -147,7 +150,7 @@ chrome.webNavigation.onCompleted.addListener(async (details) => {
   const config = await store.resolve(Config);
   if (!config.hasFlag(FLAG_NOTIFICATION_REVIEW)) return;
 
-  if (debugMode || Date.now() - new Date(installDate).getTime() >= REVIEW_NOTIFICATION_DELAY) {
+  if (__DEBUG__ || Date.now() - new Date(installDate).getTime() >= REVIEW_NOTIFICATION_DELAY) {
     openNotification({
       id: 'review',
       tabId: details.tabId,
@@ -166,7 +169,8 @@ if (__CHROMIUM__ && isOpera()) {
   const NOTIFICATION_SHOW_LIMIT = 4;
 
   chrome.webNavigation.onCompleted.addListener(async (details) => {
-    if (details.frameId !== 0 || (await isSerpSupported())) return;
+    if (!details.url.startsWith('http') || details.frameId !== 0 || (await isSerpSupported()))
+      return;
 
     openNotification({
       id: 'opera-serp',

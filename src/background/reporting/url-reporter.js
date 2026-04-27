@@ -9,16 +9,32 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0
  */
 
+import { store } from 'hybrids';
 import { UrlReporter } from '@whotracksme/reporting/reporting';
 
-import config from './config.js';
+import Options, { getPausedDetails } from '/store/options.js';
+
 import communication from './communication.js';
-import prefixedIndexedDBKeyValueStore from './storage-indexeddb.js';
+import config from './config.js';
 import StorageLocal from './storage-chrome-local.js';
+import prefixedIndexedDBKeyValueStore from './storage-indexeddb.js';
 
 export default new UrlReporter({
   config: config.url,
   storage: new StorageLocal('reporting'),
   connectDatabase: prefixedIndexedDBKeyValueStore('reporting'),
   communication,
+
+  pauseState: {
+    getFilteringMode: () => store.get(Options).mode,
+    isHostnamePaused: (hostname) => !!getPausedDetails(store.get(Options), hostname),
+    connectHostnamePausingEvents: (notify) => {
+      chrome.runtime.onMessage.addListener((msg) => {
+        if (msg.action === 'reporting:updateHostnamePause') {
+          const { hostname, paused } = msg;
+          notify({ hostname, paused });
+        }
+      });
+    },
+  },
 });

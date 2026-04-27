@@ -14,12 +14,14 @@ import { store } from 'hybrids';
 import { ENGINES, isGloballyPaused } from '/store/options.js';
 import Resources from '/store/resources.js';
 
-import { FIXES_ID_RANGE, getDynamicRulesIds, filterMaxPriorityRules } from '/utils/dnr.js';
+import { FIXES_ID_RANGE, getDynamicRulesIds } from '/utils/dnr.js';
 import * as OptionsObserver from '/utils/options-observer.js';
 import { ENGINE_CONFIGS_ROOT_URL } from '/utils/urls.js';
+import { isFilterConditionAccepted } from '/utils/engines.js';
 
-import { UPDATE_ENGINES_DELAY } from './adblocker/index.js';
+import { UPDATE_ENGINES_DELAY } from './adblocker/engines.js';
 import { updateRedirectProtectionRules } from './redirect-protection.js';
+import { captureException } from '/utils/errors.js';
 
 if (__CHROMIUM__) {
   const DNR_RESOURCES = chrome.runtime
@@ -27,6 +29,46 @@ if (__CHROMIUM__) {
     .declarative_net_request.rule_resources.filter(({ enabled }) => !enabled)
     .map(({ id }) => id);
   const DNR_FIXES_KEY = 'dnr-fixes';
+
+  /**
+   * @param {string} rulesetId
+   * @returns {Promise<number[]>}
+   */
+  async function disableExcludedRulesByPreprocessor(rulesetId) {
+    // TODO: Remove this check when the support of `updateStaticRules` is added to Safari
+    if (!chrome.declarativeNetRequest.updateStaticRules) return;
+
+    const metadata = await fetch(
+      chrome.runtime.getURL(`/rule_resources/dnr-${rulesetId}.metadata.json`),
+    )
+      .then(function (res) {
+        return res.json();
+      })
+      .catch(function (e) {
+        console.debug(`[dnr] DNR metadata for the ruleset id "${rulesetId}" was not found: ${e}`);
+        return null;
+      });
+    if (!metadata) return;
+
+    const disableRuleIds = Object.entries(metadata).reduce(function (
+      disabledRuleIds,
+      [ruleId, constraints],
+    ) {
+      if (!isFilterConditionAccepted(constraints.preprocessor)) {
+        disabledRuleIds.push(Number(ruleId));
+      }
+      return disabledRuleIds;
+    }, []);
+
+    await chrome.declarativeNetRequest.updateStaticRules({
+      rulesetId,
+      disableRuleIds,
+    });
+
+    console.info(
+      `[dnr] Disabled rules in static ruleset: ${rulesetId}: ${JSON.stringify(disableRuleIds)}`,
+    );
+  }
 
   function getIds(options) {
     if (!options.terms || isGloballyPaused(options)) return [];
@@ -101,14 +143,18 @@ if (__CHROMIUM__) {
 
           if (list.dnr.checksum !== resources.checksums[DNR_FIXES_KEY]) {
             const rules = new Set(
-              await fetch(list.dnr.url)
-                .then((res) =>
-                  res.ok
-                    ? res.json()
-                    : Promise.reject(new Error(`Failed to fetch DNR rules: ${res.statusText}`)),
-                )
-                .then(filterMaxPriorityRules),
+              await fetch(list.dnr.url).then((res) =>
+                res.ok
+                  ? res.json()
+                  : Promise.reject(new Error(`Failed to fetch DNR rules: ${res.statusText}`)),
+              ),
             );
+            const metadata = await fetch(list.dnr.metadataUrl)
+              .then((res) => res.json())
+              .catch((error) => {
+                console.error(`Failed to fetch DNR metadata: "${list.dnr.metadataUrl}": ${error}`);
+                return {};
+              });
 
             for (const rule of rules) {
               if (rule.condition.regexFilter) {
@@ -124,10 +170,16 @@ if (__CHROMIUM__) {
 
             await chrome.declarativeNetRequest.updateDynamicRules({
               removeRuleIds: await getDynamicRulesIds(FIXES_ID_RANGE),
-              addRules: Array.from(rules).map((rule, index) => ({
-                ...rule,
-                id: FIXES_ID_RANGE.start + index,
-              })),
+              addRules: Array.from(rules)
+                .filter(
+                  (rule) =>
+                    !metadata[rule.id]?.preprocessor ||
+                    isFilterConditionAccepted(metadata[rule.id].preprocessor),
+                )
+                .map((rule, index) => ({
+                  ...rule,
+                  id: FIXES_ID_RANGE.start + index,
+                })),
             });
 
             console.info('[dnr] Updated dynamic fixes rules:', list.dnr.checksum);
@@ -192,7 +244,12 @@ if (__CHROMIUM__) {
         console.info('[dnr] Updated static rulesets:', ids.length ? ids.join(', ') : 'none');
       } catch (e) {
         console.error(`[dnr] Error while updating static rulesets:`, e);
+        captureException(e, { critical: true, once: true });
       }
+
+      // The below will run when the extension is installed as
+      // well with the change of `options.terms`.
+      await Promise.all(enabledRulesetIds.map((id) => disableExcludedRulesByPreprocessor(id)));
     }
   });
 }

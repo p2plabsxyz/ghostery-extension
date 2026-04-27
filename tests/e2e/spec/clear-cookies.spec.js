@@ -12,12 +12,11 @@ import { browser, expect } from '@wdio/globals';
 import {
   enableExtension,
   getExtensionElement,
-  openPanel,
   setCookieInBrowserContext,
   waitForIdleBackgroundTasks,
+  PAGE_DOMAIN,
+  PAGE_URL,
 } from '../utils.js';
-
-import { PAGE_DOMAIN, PAGE_URL } from '../wdio.conf.js';
 
 describe('Clear Cookies', () => {
   const COOKIE_NAME = 'test-cookie';
@@ -29,13 +28,13 @@ describe('Clear Cookies', () => {
   });
 
   afterEach(async () => {
-    await browser.url(PAGE_URL, { waitUntil: 'load' });
+    await browser.url(PAGE_URL);
     await browser.deleteCookies({ name: COOKIE_NAME, domain: PAGE_DOMAIN });
   });
 
   it('clears cookies when action is triggered in the panel', async () => {
     await browser.url(PAGE_URL);
-    await openPanel();
+    await browser.url('ghostery:panel');
 
     await getExtensionElement('button:actions').click();
     await browser.pause(1000); // wait for opening menu animation to finish
@@ -51,7 +50,7 @@ describe('Clear Cookies', () => {
 
   it('clears cookies when action is triggered from website settings page', async () => {
     await browser.url(PAGE_URL);
-    await openPanel();
+    await browser.url('ghostery:panel');
 
     await getExtensionElement('button:actions').click();
     await browser.pause(1000); // wait for opening menu animation to finish

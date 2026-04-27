@@ -10,24 +10,30 @@
  */
 
 import { browser, expect } from '@wdio/globals';
-import { enableExtension, getExtensionElement, getExtensionPageURL, openPanel } from '../utils.js';
+import { enableExtension, getExtensionElement, setCookieInBrowserContext } from '../utils.js';
 
 describe('Onboarding', function () {
+  before(async () => {
+    await setCookieInBrowserContext(
+      'https://www.ghostery.com/',
+      'attribution',
+      's=source&c=campaign',
+    );
+  });
+
   it('keeps ghostery disabled', async function () {
-    await browser.url('about:blank');
-    await browser.url(getExtensionPageURL('onboarding'));
+    await browser.url('ghostery:onboarding');
 
     await getExtensionElement('button:skip').click();
     await expect(getExtensionElement('view:skip')).toBeDisplayed();
 
-    await openPanel();
+    await browser.url('ghostery:panel');
     await expect(getExtensionElement('button:enable')).toBeDisplayed();
   });
 
   if (browser.isChromium) {
     it('shows the dialog with Privacy Policy', async function () {
-      await browser.url('about:blank');
-      await browser.url(getExtensionPageURL('onboarding'));
+      await browser.url('ghostery:onboarding');
 
       await getExtensionElement('text:description', 'a:last-of-type').click();
 
@@ -35,5 +41,12 @@ describe('Onboarding', function () {
     });
   }
 
-  it('enables ghostery', () => enableExtension({ force: true }));
+  it('enables ghostery', enableExtension);
+
+  it('captures attribution from ghostery.com cookie', async () => {
+    await browser.url('ghostery:settings');
+
+    await expect(getExtensionElement('text:utm-source')).toHaveText('source');
+    await expect(getExtensionElement('text:utm-campaign')).toHaveText('campaign');
+  });
 });

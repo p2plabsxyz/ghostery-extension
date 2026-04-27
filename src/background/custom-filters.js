@@ -10,7 +10,7 @@
  */
 
 import { store } from 'hybrids';
-import { parseFilters, detectFilterType, FilterType, CosmeticFilter } from '@ghostery/adblocker';
+import { parseFilters, FilterType } from '@ghostery/adblocker';
 
 import { CUSTOM_FILTERS_ID_RANGE, getDynamicRulesIds } from '/utils/dnr.js';
 import convert from '/utils/dnr-converter.js';
@@ -20,78 +20,13 @@ import * as OptionsObserver from '/utils/options-observer.js';
 import Options from '/store/options.js';
 import CustomFilters from '/store/custom-filters.js';
 
-import { setup, reloadMainEngine } from './adblocker/index.js';
+import { setup, reloadMainEngine } from './adblocker/engines.js';
 import { updateRedirectProtectionRules } from './redirect-protection.js';
 import ManagedConfig from '/store/managed-config.js';
 
-class TrustedScriptletError extends Error {}
-
-// returns a scriptlet with encoded arguments
-// returns undefined if not a scriptlet
-// throws if scriptlet cannot be trusted
-function fixScriptlet(filter, trustedScriptlets) {
-  const cosmeticFilter = CosmeticFilter.parse(filter);
-
-  if (!cosmeticFilter || !cosmeticFilter.isScriptInject() || !cosmeticFilter.selector) {
-    return null;
-  }
-
-  const parsedScript = cosmeticFilter.parseScript();
-
-  if (!parsedScript || !parsedScript.name) {
-    return null;
-  }
-
-  if (
-    !trustedScriptlets &&
-    (parsedScript.name === 'rpnt' ||
-      parsedScript.name === 'replace-node-text' ||
-      parsedScript.name.startsWith('trusted-'))
-  ) {
-    throw new TrustedScriptletError();
-  }
-
-  const [front] = filter.split(`#+js(${parsedScript.name}`);
-  const args = parsedScript.args.map((arg) => encodeURIComponent(arg));
-  return `${front}#+js(${[parsedScript.name, ...args].join(', ')})`;
-}
-
-function normalizeFilters(text = '', { trustedScriptlets }) {
-  const rows = text.split('\n').map((f) => f.trim());
-
-  return rows.reduce(
-    (filters, filter, index) => {
-      if (!filter) return filters;
-
-      const filterType = detectFilterType(filter, {
-        extendedNonSupportedTypes: true,
-      });
-      if (filterType === FilterType.NETWORK) {
-        filters.networkFilters.add(filter);
-      } else if (filterType === FilterType.COSMETIC) {
-        try {
-          const scriptlet = fixScriptlet(filter, trustedScriptlets);
-          filters.cosmeticFilters.add(scriptlet || filter);
-        } catch (e) {
-          if (e instanceof TrustedScriptletError) {
-            filters.errors.push(`Trusted scriptlets are not allowed (${index + 1}): ${filter}`);
-          } else {
-            console.error(e);
-          }
-        }
-      } else if (
-        filterType === FilterType.NOT_SUPPORTED ||
-        filterType === FilterType.NOT_SUPPORTED_ADGUARD
-      ) {
-        filters.errors.push(`Filter not supported (${index + 1}): ${filter}`);
-      }
-      return filters;
-    },
-    {
-      networkFilters: new Set(),
-      cosmeticFilters: new Set(),
-      errors: [],
-    },
+function isTrustedScriptInject(scriptName) {
+  return (
+    scriptName === 'rpnt' || scriptName === 'replace-node-text' || scriptName.startsWith('trusted-')
   );
 }
 
@@ -115,15 +50,93 @@ async function updateDNRRules(dnrRules) {
     console.info(`[custom filters] DNR updated with rules: ${dnrRules.length}`);
   }
 
+  if (removeRuleIds.length || dnrRules.length) {
+    // Reload redirect protection rules to include custom filters changes
+    await updateRedirectProtectionRules(await store.resolve(Options));
+  }
+
   return dnrRules;
 }
 
-async function updateEngine(text) {
-  const { networkFilters, cosmeticFilters, preprocessors } = parseFilters(text);
+function findLineNumber(text, line) {
+  const index = text.indexOf(line);
+  if (index === -1) {
+    return -1;
+  }
+  if (index === 0) {
+    return 1;
+  }
+  let lines = 1;
+  for (let i = 0; i < index; i++) {
+    // Detect new lines: \n or \r
+    if (text.charCodeAt(i) === 10 || text.charCodeAt(i) === 13) {
+      lines++;
+    }
+  }
+  return lines;
+}
 
-  await engines.create(engines.CUSTOM_ENGINE, {
-    cosmeticFilters,
+async function collectFilters(text, { isTrustedScriptInjectAllowed }) {
+  const baseConfig = await engines.getConfig();
+  const { networkFilters, cosmeticFilters, preprocessors, notSupportedFilters } = parseFilters(
+    text,
+    {
+      ...baseConfig,
+      debug: true,
+    },
+  );
+
+  const errors = notSupportedFilters.reduce(function (state, { filter, filterType, lineNumber }) {
+    if (
+      filterType !== FilterType.NOT_SUPPORTED_EMPTY &&
+      filterType !== FilterType.NOT_SUPPORTED_COMMENT
+    ) {
+      state.push(`Filter not supported (${lineNumber + 1}): ${filter}`);
+    }
+    return state;
+  }, []);
+  const acceptedCosmeticFilters = cosmeticFilters.filter(function (filter) {
+    if (filter.isScriptInject() === false || isTrustedScriptInjectAllowed === true) {
+      return true;
+    }
+
+    const scriptNameIndex = filter.selector.indexOf(',');
+    const scriptName =
+      scriptNameIndex === -1 ? filter.selector : filter.selector.slice(0, scriptNameIndex);
+    if (isTrustedScriptInject(scriptName)) {
+      errors.push(
+        `Trusted scriptlets are not allowed (${findLineNumber(text, filter.rawLine)}): ${filter.rawLine}`,
+      );
+      return false;
+    }
+
+    return true;
+  });
+
+  /**
+   * @type {Map<number, string>}
+   */
+  let filterIdToRawLine = null;
+  if (__CHROMIUM__) {
+    filterIdToRawLine = new Map();
+    for (const filter of networkFilters) {
+      filterIdToRawLine.set(filter.getId(), filter.rawLine);
+    }
+  }
+
+  return {
     networkFilters,
+    filterIdToRawLine,
+    cosmeticFilters: acceptedCosmeticFilters,
+    preprocessors,
+    errors,
+  };
+}
+
+async function updateEngine({ networkFilters, cosmeticFilters, preprocessors }) {
+  const engine = await engines.create(engines.CUSTOM_ENGINE, {
+    networkFilters,
+    cosmeticFilters,
     preprocessors,
   });
 
@@ -131,36 +144,46 @@ async function updateEngine(text) {
     `[custom filters] Engine updated with network filters: ${networkFilters.length}, cosmetic filters: ${cosmeticFilters.length}`,
   );
 
-  return {
-    networkFilters: networkFilters.length,
-    cosmeticFilters: cosmeticFilters.length,
-  };
+  return engine;
 }
 
 export async function updateCustomFilters(input, options) {
   // Ensure update of the custom filters is done after the main engine is initialized
   setup.pending && (await setup.pending);
 
-  const { networkFilters, cosmeticFilters, errors } = normalizeFilters(input, options);
-  const result = await updateEngine([...networkFilters, ...cosmeticFilters].join('\n'));
+  const { networkFilters, cosmeticFilters, preprocessors, errors, filterIdToRawLine } =
+    await collectFilters(input, {
+      isTrustedScriptInjectAllowed: options.trustedScriptlets,
+    });
 
-  result.errors = errors;
+  // Update custom filters engine
+  const engine = await updateEngine({ networkFilters, cosmeticFilters, preprocessors });
 
   // Update main engine with custom filters
   await reloadMainEngine();
 
+  const result = {
+    networkFilters: networkFilters.length,
+    cosmeticFilters: cosmeticFilters.length,
+    errors,
+  };
+
   // Update DNR rules for Chromium and Safari
   if (__CHROMIUM__) {
-    const { rules, errors } = await convert([...networkFilters].map((f) => f.toString()));
+    const acceptedNetworkFilters = engine
+      .getFilters()
+      .networkFilters.filter(function (filter) {
+        return engine.preprocessors.isFilterExcluded(filter) === false;
+      })
+      .map(function (filter) {
+        return filterIdToRawLine.get(filter.getId());
+      });
+    const { rules, errors } = await convert(acceptedNetworkFilters);
+    result.dnrRules = await updateDNRRules(rules);
 
     if (errors?.length) {
       result.errors.push(...errors);
     }
-
-    result.dnrRules = await updateDNRRules(rules);
-
-    // Reload redirect protection rules to include custom filters changes
-    await updateRedirectProtectionRules(await store.resolve(Options));
   }
 
   return result;
@@ -203,6 +226,9 @@ OptionsObserver.addListener('customFilters', async (value, lastValue) => {
       const { text } = await store.resolve(CustomFilters);
       await updateCustomFilters(text, value);
     } else {
+      // Update main engine without custom filters
+      await reloadMainEngine();
+
       // When disabling custom filters, we need to remove all DNR rules
       // as they are not removed automatically
       // TODO: Save DNR rules after converting to avoid re-converting when enabling

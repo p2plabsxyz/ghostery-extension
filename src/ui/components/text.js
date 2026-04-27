@@ -59,10 +59,11 @@ export default {
     ::slotted(*) { color: inherit; }
     ::slotted(ui-text) { display: inline; }
 
-    :host([type^="body"]) ::slotted(a) { color: var(--color-brand-primary); font-weight: 600; }
+    :host([type^="body"]) ::slotted(a) { font-weight: 600; }
     ::slotted(a) { outline-color: var(--border-brand-solid); transition: color 0.2s, opacity 0.2s; text-decoration: none; -webkit-tap-highlight-color: transparent; }
     ::slotted(a:active) { opacity: 0.6; }
     ::slotted(a:not([href])) { opacity: 0.6; pointer-events: none; }
+    @media (hover: hover) { ::slotted(a:hover) { text-decoration: underline; } }
 
     ::slotted(ul) { padding: 0; margin: 0 0 0 1.5em; }
   `,

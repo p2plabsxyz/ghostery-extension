@@ -25,14 +25,20 @@ mount(document.body, {
   platformName: { value: getOS(), reflect: true },
   render: ({ stack }) => html`
     <template layout="row">
-      <div id="alert-container" layout="fixed inset:1 top:0.5 bottom:auto layer:500"></div>
+      <div id="alert-container" layout="fixed inset:1 top:1 bottom:auto layer:500"></div>
       ${stack}
     </template>
   `,
 });
 
 // Ping telemetry on panel open
-chrome.runtime.sendMessage({ action: 'telemetry', event: 'engaged' });
+chrome.runtime.sendMessage({ action: 'telemetry:ping', event: 'engaged' });
 
 // Sync options with background
 chrome.runtime.sendMessage({ action: 'syncOptions' });
+
+// This code keeps the services worker alive while the panel is open to ensure that
+// pausing the website triggers an update keeping the old value of the option.
+// If the SW would be restarts because of the option change, the options observers
+// run as it would be a cold start.
+setInterval(() => chrome.runtime.sendMessage({ action: 'keepAlive' }), 15000);

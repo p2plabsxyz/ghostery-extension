@@ -90,6 +90,12 @@ async function togglePause(host, event) {
     });
   }
 
+  await chrome.runtime.sendMessage({
+    action: 'reporting:updateHostnamePause',
+    hostname: stats.hostname,
+    paused: !paused, // paused is the old value, but we want the current state
+  });
+
   showAlert(html`
     <panel-alert type="danger">
       ${paused
@@ -260,7 +266,7 @@ export default {
               <panel-actions-button>
                 <button onclick="${openLogger}">
                   <panel-actions-icon name="open-book"></panel-actions-icon>
-                  View details logs
+                  View detailed logs
                   <ui-icon name="chevron-right" color="tertiary" layout="size:2"></ui-icon>
                 </button>
               </panel-actions-button>
@@ -274,7 +280,7 @@ export default {
                 >
                   <panel-actions-icon name="settings"></panel-actions-icon>
                   Open website settings
-                  <ui-icon name="link-external-m" color="tertiary" layout="size:2"></ui-icon>
+                  <ui-icon name="external-link" color="tertiary" layout="size:2"></ui-icon>
                 </a>
               </panel-actions-button>
             </panel-actions>
@@ -442,6 +448,7 @@ export default {
                                         trackerId: tracker.id,
                                       })}"
                                       layout="row center relative"
+                                      data-qa="button:tracker:protection-status:${tracker.id}"
                                     >
                                       <panel-protection-status-icon
                                         options="${options}"
@@ -526,18 +533,22 @@ export default {
               layout="block margin:1.5:1.5:0.5"
               layout.last="margin:bottom:1.5"
             >
-              <panel-options-item icon="ads" enabled="${options.blockAds}" terms="${options.terms}">
+              <panel-options-item
+                icon="block-ads"
+                enabled="${options.blockAds}"
+                terms="${options.terms}"
+              >
                 Ad-Blocking
               </panel-options-item>
               <panel-options-item
-                icon="tracking"
+                icon="anti-tracking"
                 enabled="${options.blockTrackers}"
                 terms="${options.terms}"
               >
                 Anti-Tracking
               </panel-options-item>
               <panel-options-item
-                icon="autoconsent"
+                icon="never-consent"
                 enabled="${options.blockAnnoyances}"
                 terms="${options.terms}"
               >

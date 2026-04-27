@@ -69,8 +69,7 @@ const Options = {
   },
 
   // Experimental features
-  autoconsent: { autoAction: 'optOut' },
-  experimentalFilters: false,
+  autoconsent: { autoAction: 'optOut', gpc: true },
   fixesFilters: true,
 
   // SERP protection
@@ -168,14 +167,14 @@ export const REPORT_OPTIONS = [
   'filtersUpdatedAt',
 ];
 
-export default Options;
-
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === UPDATE_OPTIONS_ACTION_NAME) {
     store.clear(Options, false);
     store.get(Options);
   }
 });
+
+export default Options;
 
 async function migrate(options, optionsVersion) {
   // Pushed in v10.3.14

@@ -10,9 +10,14 @@
  */
 
 import { browser, expect, $ } from '@wdio/globals';
-import { FLAG_MODES } from '@ghostery/config';
 
-import { argv } from './wdio.conf.js';
+export const PAGE_PORT = 6789;
+export const PAGE_DOMAIN = `page.localhost`;
+export const SUBPAGE_DOMAIN = `subpage.localhost`;
+export const REDIRECT_PAGE_DOMAIN = `redirect.localhost`;
+export const PAGE_URL = `http://${PAGE_DOMAIN}:${PAGE_PORT}/`;
+export const SUBPAGE_URL = `http://${SUBPAGE_DOMAIN}:${PAGE_PORT}/`;
+export const REDIRECT_PAGE_URL = `http://${REDIRECT_PAGE_DOMAIN}:${PAGE_PORT}/`;
 
 export const ADBLOCKING_GLOBAL_SELECTOR = 'ad-slot';
 export const ADBLOCKING_URL_SELECTOR = '[data-ad-name]';
@@ -41,16 +46,19 @@ export async function sendMessage(msg) {
     throw new Error('Message can only be sent from the extension context');
   }
 
-  const result = await browser.execute(
-    browser.isChromium
-      ? (msg) => chrome.runtime.sendMessage(JSON.parse(msg))
-      : (msg) => browser.runtime.sendMessage(JSON.parse(msg)),
-    JSON.stringify(msg),
-  );
+  // Wait for a short time to ensure that the background process is ready
+  // to receive messages after the extension page is loaded or reloaded.
+  await browser.pause(100);
 
-  if (result !== 'done') {
-    throw new Error(`Background tasks did not respond with "done": ${result}`);
-  }
+  await browser.execute(async function (msg) {
+    console.log('[e2e] Sending message to background:', msg);
+    const result = await (window.chrome || window.browser).runtime.sendMessage(JSON.parse(msg));
+    console.log('[e2e] Received response from background:', result);
+
+    if (result !== 'done') {
+      throw new Error(`Background tasks did not respond with "done": ${result}`);
+    }
+  }, JSON.stringify(msg));
 }
 
 export async function waitForIdleBackgroundTasks() {
@@ -58,61 +66,58 @@ export async function waitForIdleBackgroundTasks() {
 }
 
 export async function reloadExtension() {
-  await browser.url('about:blank');
+  if (browser.isChromium) {
+    await browser.url('chrome://extensions');
 
-  await browser[browser.isFirefox ? 'newWindow' : 'url'](getExtensionPageURL('panel'));
+    const reloadButton = await $('>>>#dev-reload-button');
+    await reloadButton.click();
 
-  await sendMessage({ action: 'e2e:reloadExtension' });
+    // After clicking reload, the extension toggle loses its checked state
+    // and regains it once the extension is fully reloaded.
+    const enableToggle = await $('>>>#enableToggle');
 
-  if (browser.isFirefox) {
-    await browser.switchWindow('about:blank');
+    await browser.waitUntil(async () => !(await enableToggle.getProperty('checked')), {
+      timeout: 5000,
+      timeoutMsg: 'Extension did not start reloading',
+    });
+
+    await browser.waitUntil(async () => await enableToggle.getProperty('checked'), {
+      timeout: 10000,
+      timeoutMsg: 'Extension did not finish reloading in chrome://extensions',
+    });
+  } else if (browser.isFirefox) {
+    await browser.url('about:debugging#/runtime/this-firefox');
+
+    const reloadButton = await $('.qa-temporary-extension-reload-button');
+    await reloadButton.click();
+
+    await expect($('.extension-backgroundscript__status')).toHaveElementClass(
+      expect.stringContaining('extension-backgroundscript__status--stopped'),
+      { wait: 5000 },
+    );
+
+    // Wait until the background script status shows it is running again
+    await expect($('.extension-backgroundscript__status')).toHaveElementClass(
+      expect.stringContaining('extension-backgroundscript__status--running'),
+      { wait: 10000 },
+    );
   }
 
-  await browser.pause(3000);
-
-  await browser.waitUntil(
-    async () => {
-      const title = await browser.getTitle();
-      if (title !== 'Ghostery panel') {
-        await browser.url(getExtensionPageURL('panel'));
-        return false;
-      }
-
-      return true;
-    },
-    { timeout: 10000, timeoutMsg: 'Panel did not load' },
-  );
-
+  await browser.url('ghostery:panel');
   await waitForIdleBackgroundTasks();
-
-  await browser.url('about:blank');
-}
-
-export async function enableExtension({ force = false } = {}) {
-  await browser.url('about:blank');
-  await browser.url(getExtensionPageURL('onboarding'));
-
-  const enableButton = await getExtensionElement('button:enable');
-
-  if (force || (await enableButton.isDisplayed())) {
-    await enableButton.click();
-
-    if (argv.flags.includes(FLAG_MODES)) {
-      await expect(getExtensionElement('view:filtering-mode')).toBeDisplayed();
-      await getExtensionElement('button:filtering-mode:ghostery').click();
-    }
-
-    await expect(getExtensionElement('view:success')).toBeDisplayed();
-
-    await waitForIdleBackgroundTasks();
-  }
 }
 
 export async function setToggle(name, value) {
   const toggle = await getExtensionElement(`toggle:${name}`);
 
   if ((await toggle.getProperty('value')) !== value) {
-    await toggle.click();
+    const desc = await toggle.$('span');
+
+    if (await desc.isExisting()) {
+      await desc.click();
+    } else {
+      await toggle.click();
+    }
 
     // Allow background process to update the settings
     await waitForIdleBackgroundTasks();
@@ -122,42 +127,23 @@ export async function setToggle(name, value) {
 }
 
 export async function setPrivacyToggle(name, value) {
-  await browser.url('about:blank');
-  await browser.url(getExtensionPageURL('settings'));
+  await browser.url('ghostery:settings');
+
+  await setToggle(name, value);
+}
+
+export async function setAdditionalFiltersToggle(name, value) {
+  await browser.url('ghostery:settings');
+  await getExtensionElement('button:additional-filters').click();
 
   await setToggle(name, value);
 }
 
 export async function setWhoTracksMeToggle(name, value) {
-  await browser.url(getExtensionPageURL('settings'));
+  await browser.url('ghostery:settings');
   await getExtensionElement('button:whotracksme').click();
 
   await setToggle(name, value);
-}
-
-export async function openPanel() {
-  await browser.url(getExtensionPageURL('panel'));
-
-  // The panel has a bugfix for closing the panel when links are clicked.
-  // Source: /pages/panel/index.js - L52
-  // In test environment it must be disabled to allow the test to switch back to the panel
-  await browser.execute(() => {
-    Object.defineProperty(window, 'close', { value: function () {} });
-  });
-}
-
-export async function setConfigFlags(flags) {
-  try {
-    console.log('Setting config flags:', flags);
-
-    await browser.url(getExtensionPageURL('panel'));
-    await sendMessage({ action: 'e2e:setConfigFlags', flags });
-
-    // Reload the extension to apply the new config flags
-    await reloadExtension();
-  } catch {
-    console.warn('Current extension version does not support setting config flags');
-  }
 }
 
 export async function expectAdsBlocked() {
@@ -171,9 +157,8 @@ export async function expectAdsBlocked() {
   await expect(dataAd).not.toBeDisplayed();
 }
 
-export async function setCustomFilters(filters, callback) {
-  await setPrivacyToggle('custom-filters', true);
-  await getExtensionElement('button:custom-filters').click();
+export async function setCustomFilters(filters) {
+  await setAdditionalFiltersToggle('custom-filters', true);
 
   const checkbox = await getExtensionElement('checkbox:custom-filters:trusted-scriptlets');
 
@@ -186,35 +171,14 @@ export async function setCustomFilters(filters, callback) {
   await input.setValue(filters.join('\n'));
 
   await getExtensionElement('button:custom-filters:save').click();
+  await waitForIdleBackgroundTasks();
 
   await expect(getExtensionElement('component:custom-filters:result')).toBeDisplayed();
-
-  if (callback) {
-    await callback();
-  }
-
-  await getExtensionElement('button:back').click();
 }
 
-export function getNotificationIframe(id) {
-  return $(`>>>iframe#ghostery-notification-iframe[src*="notifications/${id}.html"]`);
-}
-
-// FYI: Firefox has a bug where clicking a button in an iframe
-// that is inside a Shadow DOM does not work by using `el.click()`,
-// but works when using `browser.execute()` to click the button.
-// For the consistency and to avoid switching between different
-// methods of clicking, we use `browser.execute()` in both browsers.
-export async function dismissNotification(id, action = 'button:dismiss') {
-  const iframe = await getNotificationIframe(id);
-  await switchFrame(iframe);
-
-  await browser.execute((action) => {
-    document.querySelector(`[data-qa="${action}"]`).click();
-  }, action);
-
-  await browser.switchFrame(null);
-  await expect(getNotificationIframe(id)).not.toExist();
+export async function disableCustomFilters() {
+  await setCustomFilters([]);
+  await setAdditionalFiltersToggle('custom-filters', false);
 }
 
 export async function switchFrame(frameElement) {
@@ -229,14 +193,112 @@ export async function switchFrame(frameElement) {
   await browser.switchFrame(frameElement);
 }
 
-export async function setCookieInBrowserContext(url, name, value) {
-  await browser.url(url, { waitUntil: 'load' });
+export async function setCookieInBrowserContext(url, name, value = '') {
+  await browser.url(url);
 
   await browser.execute(
-    (name, value) => {
+    function (name, value) {
       document.cookie = `${name}=${value}`;
     },
     name,
     value,
   );
+}
+
+function getNotificationIframe(id) {
+  return $(`>>>iframe#ghostery-notification-iframe[src*="notifications/${id}.html"]`);
+}
+
+export async function expectPageNotification(url, notificationId) {
+  await browser.url(url);
+
+  await browser.waitUntil(async () => await getNotificationIframe(notificationId).isExisting(), {
+    timeout: 5000,
+    timeoutMsg: `Notification iframe for ${notificationId} did not appear on ${url}`,
+  });
+}
+
+export async function expectNoPageNotification(url, notificationId) {
+  await browser.url(url);
+
+  await browser.waitUntil(async () => !(await getNotificationIframe(notificationId).isExisting()), {
+    timeout: 5000,
+    timeoutMsg: `Notification iframe for ${notificationId} appeared on ${url}`,
+  });
+}
+
+export async function dismissPageNotification(page, id, action = 'button:dismiss') {
+  await expectPageNotification(page, id);
+  const iframe = await getNotificationIframe(id);
+
+  await switchFrame(iframe);
+
+  // FYI: Firefox has a bug where clicking a button in an iframe
+  // that is inside a Shadow DOM does not work by using `el.click()`,
+  // but works when using `browser.execute()` to click the button.
+  // For the consistency and to avoid switching between different
+  // methods of clicking, we use `browser.execute()` in both browsers.
+  if (action === 'dialog:close') {
+    await browser.execute(function () {
+      const dialog = document.querySelector('ui-notification-dialog');
+      dialog.shadowRoot.querySelector('button').click();
+    });
+  } else {
+    await browser.waitUntil(async () => await getExtensionElement(action).isExisting(), {
+      timeout: 5000,
+      timeoutMsg: `Dismiss button for ${id} notification did not appear`,
+    });
+
+    await browser.execute(function (action) {
+      document.querySelector(`[data-qa="${action}"]`).click();
+    }, action);
+  }
+
+  // Allow to complete the dismiss action in the background process and remove the iframe
+  await browser.pause(1000);
+
+  await browser.switchFrame(null);
+
+  await browser.waitUntil(async () => !(await getNotificationIframe(id).isExisting()), {
+    timeout: 5000,
+    timeoutMsg: `Notification iframe for ${id} still exists after dismissing`,
+  });
+}
+
+async function dismissNotifications() {
+  // The "pin-it" notification is only available in Chromium-based browsers
+  // and it is displayed just after enabling the extension on the first visited page.
+  if (browser.isChromium) {
+    await dismissPageNotification(PAGE_URL, 'pin-it', 'dialog:close');
+  }
+
+  // The "review" notification is displayed after 30 days of usage,
+  // but in debug mode it is shown immediately. As the code in background
+  // runs after the "pin-it" notification, it will be shown after it.
+  await dismissPageNotification(PAGE_URL, 'review', 'dialog:close');
+
+  // After pin-it and review notifications have been displayed,
+  // no further notification should be shown
+  await expectNoPageNotification(PAGE_URL, 'pin-it');
+  await expectNoPageNotification(PAGE_URL, 'review');
+}
+
+export async function enableExtension() {
+  if (enableExtension.done) return;
+
+  await browser.url('ghostery:onboarding');
+
+  if (await getExtensionElement('view:success').isDisplayed()) {
+    return;
+  }
+
+  await getExtensionElement('button:enable').click();
+  await getExtensionElement('button:filtering-mode:ghostery').click();
+
+  await expect(getExtensionElement('view:success')).toBeDisplayed();
+  await waitForIdleBackgroundTasks();
+
+  await dismissNotifications();
+
+  enableExtension.done = true;
 }

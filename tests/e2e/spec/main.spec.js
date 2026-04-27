@@ -14,22 +14,21 @@ import {
   enableExtension,
   getExtensionElement,
   setPrivacyToggle,
-  openPanel,
+  setAdditionalFiltersToggle,
   waitForIdleBackgroundTasks,
   expectAdsBlocked,
   switchFrame,
   ADBLOCKING_GLOBAL_SELECTOR,
   ADBLOCKING_URL_SELECTOR,
   TRACKER_IDS,
+  PAGE_URL,
 } from '../utils.js';
-
-import { PAGE_URL } from '../wdio.conf.js';
 
 describe('Main Features', function () {
   before(enableExtension);
 
   describe('Never-consent', function () {
-    const WEBSITE_URL = 'https://stackoverflow.com/';
+    const WEBSITE_URL = 'https://www.onetrust.com/';
     const SELECTOR = '#onetrust-consent-sdk';
 
     it('displays consent popup', async function () {
@@ -129,6 +128,9 @@ describe('Main Features', function () {
         document.body.appendChild(adSlot);
       }, DYNAMIC_SELECTOR);
 
+      // The dynamic element might be blocked after a delay
+      await browser.pause(100);
+
       await expect($(DYNAMIC_SELECTOR)).toExist();
       await expect($(DYNAMIC_SELECTOR)).not.toBeDisplayed();
     });
@@ -139,7 +141,7 @@ describe('Main Features', function () {
       await setPrivacyToggle('anti-tracking', false);
       await browser.url(PAGE_URL);
 
-      await openPanel();
+      await browser.url('ghostery:panel');
       await getExtensionElement('button:detailed-view').click();
 
       for (const trackerId of TRACKER_IDS) {
@@ -152,7 +154,7 @@ describe('Main Features', function () {
       await setPrivacyToggle('anti-tracking', true);
       await browser.url(PAGE_URL);
 
-      await openPanel();
+      await browser.url('ghostery:panel');
       await getExtensionElement('button:detailed-view').click();
 
       for (const trackerId of TRACKER_IDS) {
@@ -166,15 +168,16 @@ describe('Main Features', function () {
     const SELECTOR = '.a-re';
 
     it('shows the ads on the page', async function () {
-      await setPrivacyToggle('regional-filters', false);
+      await setAdditionalFiltersToggle('regional-filters', false);
+
       await browser.url(WEBSITE_URL);
       await expect($(SELECTOR)).toBeDisplayed();
+
+      await setAdditionalFiltersToggle('regional-filters', true);
     });
 
     it('hides the ads on the page', async function () {
-      await setPrivacyToggle('regional-filters', true);
-      await getExtensionElement('button:regional-filters').click();
-
+      await setAdditionalFiltersToggle('regional-filters', true);
       const checkbox = await getExtensionElement('checkbox:regional-filters:pl');
 
       if (!(await checkbox.getProperty('checked'))) {
@@ -187,20 +190,15 @@ describe('Main Features', function () {
 
       await browser.url(WEBSITE_URL);
       await expect($(SELECTOR)).not.toBeDisplayed();
-      await setPrivacyToggle('regional-filters', false);
     });
   });
 
   describe('Global Pause', function () {
-    it('blocks trackers when is disabled', async function () {
-      await setPrivacyToggle('global-pause', false);
-      await browser.url(PAGE_URL);
-
-      await expect($(ADBLOCKING_GLOBAL_SELECTOR)).not.toBeDisplayed();
-    });
-
-    it("doesn't block trackers when is enabled", async function () {
+    it("doesn't block ads when is enabled", async function () {
       await setPrivacyToggle('global-pause', true);
+
+      // Reload twice the page to ensure it is not loaded from cache
+      await browser.url(PAGE_URL);
       await browser.url(PAGE_URL);
 
       await expect($(ADBLOCKING_GLOBAL_SELECTOR)).toBeDisplayed();
@@ -216,16 +214,18 @@ describe('Main Features', function () {
       await expect($(ADBLOCKING_GLOBAL_SELECTOR)).not.toBeDisplayed();
 
       // Pause the website
-      await openPanel();
+      await browser.url('ghostery:panel');
       await getExtensionElement('button:pause').click();
       await waitForIdleBackgroundTasks();
 
-      // Reload and check ads are displayed
+      // Reload twice the page to ensure it is not loaded from cache
       await browser.url(PAGE_URL);
+      await browser.url(PAGE_URL);
+
       await expect($(ADBLOCKING_GLOBAL_SELECTOR)).toBeDisplayed();
 
       // Resume the website
-      await openPanel();
+      await browser.url('ghostery:panel');
       await getExtensionElement('button:resume').click();
       await waitForIdleBackgroundTasks();
 

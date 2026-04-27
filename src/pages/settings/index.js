@@ -17,8 +17,6 @@ import Config from '/store/config.js';
 import Options from '/store/options.js';
 import ManagedConfig from '/store/managed-config.js';
 
-import { debugMode } from '/utils/debug.js';
-
 import Settings from './settings.js';
 
 import './elements.js';
@@ -28,7 +26,7 @@ import './styles.css';
 // we must redirect to onboarding if terms are not accepted
 Promise.all([store.resolve(Options), store.resolve(ManagedConfig), store.resolve(Config)])
   .then(([{ terms }, managedConfig]) => {
-    if (!debugMode && (!terms || managedConfig.disableUserControl)) {
+    if (!__DEBUG__ && (!terms || managedConfig.disableUserControl)) {
       throw new Error('Access denied');
     }
 
@@ -36,6 +34,12 @@ Promise.all([store.resolve(Options), store.resolve(ManagedConfig), store.resolve
     chrome.runtime.sendMessage({ action: 'syncOptions' });
 
     mount(document.body, Settings);
+
+    // This code keeps the services worker alive while the settings page is open to ensure that
+    // changing options triggers an update keeping the old value of the option.
+    // If the SW would be restarts because of the option change, the options observers
+    // run as it would be a cold start.
+    setInterval(() => chrome.runtime.sendMessage({ action: 'keepAlive' }), 15000);
   })
   .catch(() => {
     window.location.replace(chrome.runtime.getURL('/pages/onboarding/index.html'));

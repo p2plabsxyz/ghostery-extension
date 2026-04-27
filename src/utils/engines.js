@@ -17,12 +17,12 @@ import {
   getLinesWithFilters,
   mergeDiffs,
   Resources,
+  evaluatePreprocessor,
 } from '@ghostery/adblocker';
 
 import ResourcesModel from '/store/resources.js';
 
 import { registerDatabase } from './indexeddb.js';
-import debug from './debug.js';
 import { CDN_URL } from './urls.js';
 
 export const MAIN_ENGINE = 'main';
@@ -35,15 +35,19 @@ export const TRACKERDB_ENGINE = 'trackerdb';
 
 const engines = new Map();
 
-const ENV = new Map([
+export const ENV = new Map([
   ['ext_ghostery', true],
+  ['ext_ublock', true],
+  ['ext_ubol', checkUserAgent('Firefox')],
   ['cap_html_filtering', checkUserAgent('Firefox')],
-  // can be removed in once $replace support is sufficiently distributed
+  // TODO: Can be removed once $replace support is sufficiently distributed
   ['cap_replace_modifier', checkUserAgent('Firefox')],
+  ['cap_user_stylesheet', true],
   ['env_firefox', checkUserAgent('Firefox')],
   ['env_chromium', checkUserAgent('Chrome')],
   ['env_edge', checkUserAgent('Edg')],
   ['env_mobile', checkUserAgent('Mobile')],
+  // TODO: Can be removed after clean up of the experimental filters is sufficiently distributed
   ['env_experimental', false],
 ]);
 
@@ -72,6 +76,10 @@ function deserializeEngine(engineBytes) {
   engine.updateEnv(ENV);
 
   return engine;
+}
+
+export function isFilterConditionAccepted(condition) {
+  return evaluatePreprocessor(condition, ENV);
 }
 
 function loadFromMemory(name) {
@@ -452,4 +460,10 @@ export function remove(name) {
   });
 }
 
-debug.engines = { get };
+export async function getConfig() {
+  const baseEngine = await init(FIXES_ENGINE);
+  return baseEngine.config;
+}
+
+// Debug tools
+(globalThis.ghostery ??= {}).engines = { get };

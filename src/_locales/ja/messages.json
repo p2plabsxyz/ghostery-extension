@@ -48,6 +48,9 @@
   "add_website_exception": {
     "message": "ウェブサイトの例外を追加"
   },
+  "additional_filters": {
+    "message": "追加フィルター"
+  },
   "adjusted___tracker": {
     "message": "調整済み",
     "description": "Singular form - tracker has been adjusted"
@@ -94,6 +97,9 @@
   "audio_video_player": {
     "message": "オーディオ/ビデオ・プレーヤー",
     "description": "Tracker category name"
+  },
+  "automatically_adjusted": {
+    "message": "自動調整済み"
   },
   "automatically_paused_to_prevent_adblocker_breakage": {
     "message": "広告ブロッカーの破損を防ぐために自動的に一時停止されました"
@@ -164,6 +170,9 @@
   },
   "browser__vendor__version__language__operating_system_vendor": {
     "message": "ブラウザ：ベンダー、バージョン、言語、オペレーティングシステムベンダー"
+  },
+  "browser_redirect_protection": {
+    "message": "ブラウザリダイレクト保護"
   },
   "browsing_assistant": {
     "message": "ブラウジングアシスタント"
@@ -347,6 +356,12 @@
   "enabled": {
     "message": "有効になっています"
   },
+  "enabled__@_0_": {
+    "message": "有効: $${0}"
+  },
+  "ensures_your_clicks_go_directly_to_the_pages_you_select__without_unnecessary_tracking_detours_": {
+    "message": "クリックが不要な追跡の回り道をすることなく、選択したページに直接移動するようにします。"
+  },
   "enter_the_website_url_you_want_to_allow_redirects_from__ghostery_will_not_show_the_warning_page_for_this_domain_": {
     "message": "リダイレクトを許可したいウェブサイトのURLを入力してください。このドメインに対してGhosteryは警告ページを表示しません。"
   },
@@ -378,11 +393,11 @@
   "expand_ghostery_ad_blocking_to_search_engines_in_a_few_easy_steps_": {
     "message": "簡単なステップで、Ghosteryの広告ブロッキングを検索エンジンへと拡張できます。"
   },
-  "experimental_filters": {
-    "message": "実験的フィルター"
-  },
   "export_to_file": {
     "message": "ファイルにエクスポート"
+  },
+  "extend_your_protection_with_regional_and_custom_filters_for_advanced_control_": {
+    "message": "地域別およびカスタムフィルターで保護を強化し、高度な制御を実現します。"
   },
   "extension__version__installation_date__random_install_number__from_1_to_100___basic_settings__contribution_status": {
     "message": "拡張機能: バージョン、インストール日、ランダムインストール番号 (1から100まで)、基本設定、貢献状況"
@@ -484,9 +499,6 @@
   "help_ghostery_fight_for_a_web_where_privacy_is_a_basic_human_right_": {
     "message": "Ghosteryはウェブ上でのプライバシーを基本的人権だと考え、それに対する対策を講じています。ぜひサポートをお願いいたします。"
   },
-  "helps_ghostery_fix_broken_pages_faster__by_activating_you_can_test_experimental_filters_and_support_us_with_feedback__please_send_a_message_to_support@ghostery_com_describing_how_your_experience_changed_after_enabling_": {
-    "message": "Ghosteryが壊れたページをより早く修正するのを助けます。アクティベートすることで、実験的なフィルターをテストし、フィードバックで私たちをサポートできます。有効化後の体験の変化について、詳細を含めてsupport@ghostery.comにメッセージを送ってください。あなたのフィードバックは、私たちのサービス向上に非常に役立ちます。"
-  },
   "hey__do_you_enjoy_ghostery_and_want_to_support_our_work_": {
     "message": "Ghosteryが好きで、私たちの仕事をサポートしていただける方を募集中です。"
   },
@@ -578,11 +590,20 @@
   "load_more": {
     "message": "さらに読み込む"
   },
+  "manage_the_list_of_trackers_that_are_allowed_to_load_on_this_site_": {
+    "message": "このサイトで読み込みを許可するトラッカーのリストを管理します。"
+  },
+  "manage_the_list_of_websites_that_are_allowed_to_load_this_tracker_": {
+    "message": "このトラッカーの読み込みを許可するウェブサイトのリストを管理します。"
+  },
   "manifest_name": {
     "message": "Ghostery プライバシー広告ブロッカー"
   },
   "manifest_short_description": {
     "message": "高速でプライベート、そして広告なしのブラウジングを信頼して利用できます！"
+  },
+  "manually_adjusted": {
+    "message": "手動で調整済み"
   },
   "menu": {
     "message": "メニュー"
@@ -633,11 +654,8 @@
   "no_exceptions_added_yet": {
     "message": "まだ例外は追加されていません"
   },
-  "no_protection_exceptions_added_yet": {
-    "message": "まだ保護例外は追加されていません"
-  },
-  "no_websites_exceptions_added_yet": {
-    "message": "ウェブサイトの例外はまだ追加されていません"
+  "no_options_are_currently_enabled": {
+    "message": "現在、オプションは有効になっていません"
   },
   "observed_activities": {
     "message": "観察済みのアクティビティ"
@@ -695,6 +713,9 @@
   "paused": {
     "message": "一時停止"
   },
+  "paused_automatically_by_ghostery_s_browsing_assistant_to_prevent_ad_blocker_breakage_": {
+    "message": "Ghosteryのブラウジングアシスタントにより、広告ブロッカーの破損を防ぐため自動的に一時停止されました。"
+  },
   "paused_by_browsing_assistant": {
     "message": "閲覧アシスタントによって一時停止されました"
   },
@@ -725,8 +746,8 @@
   "prevents_various_tracking_techniques_using_ai_driven_technology_": {
     "message": "AIを活用した技術で様々な追跡手法を防止します。"
   },
-  "prevents_websites_from_redirecting_you_through_tracking_services_or_unknown_destinations_that_may_compromise_your_privacy_or_security_": {
-    "message": "ウェブサイトがトラッキングサービスやプライバシーやセキュリティを損なう可能性のある未知の目的地にリダイレクトするのを防ぎます。"
+  "prevents_websites_from_redirecting_your_clicks_through_tracking_urls_before_loading_the_destination_pages_": {
+    "message": "ウェブサイトが、目的のページを読み込む前にトラッキングURLを介してクリックをリダイレクトするのを防ぎます。"
   },
   "print_to_pdf": {
     "message": "PDFに印刷"
@@ -758,8 +779,8 @@
   "redirect_protection": {
     "message": "リダイレクト保護"
   },
-  "regional_filters": {
-    "message": "地域フィルター"
+  "regional_block_lists": {
+    "message": "地域別ブロックリスト"
   },
   "reload_to_see_changes": {
     "message": "変更を確認するには、リロードしてください。"
@@ -1034,7 +1055,7 @@
   "view_activity_details": {
     "message": "アクティビティの詳細を表示"
   },
-  "view_details_logs": {
+  "view_detailed_logs": {
     "message": "詳細ログを表示"
   },
   "view_report": {
@@ -1102,6 +1123,9 @@
   },
   "you_block_ads_on_the_sites_you_use__block_once__they_stay_ad_free_every_time_you_visit_": {
     "message": "利用するサイトの広告をブロックします。一度ブロックすれば、以降の訪問時は常に広告なしの状態を維持します。"
+  },
+  "you_can_disable_it_in__a_href__@_0___whotracks_me_settings__a__": {
+    "message": "<a href=\"$${0}\">WhoTracks.Meの設定</a>で無効にできます。"
   },
   "you_re_about_to_remove_all_cookies_stored_by_@_0__": {
     "message": "$${0}によって保存されたすべてのクッキーを削除しようとしています。"

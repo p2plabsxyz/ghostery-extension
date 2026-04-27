@@ -11,7 +11,6 @@
 
 import { setLogLevel, describeLoggers } from '@whotracksme/reporting/reporting';
 
-import debug from '/utils/debug.js';
 import * as OptionsObserver from '/utils/options-observer.js';
 import { isFirefox } from '/utils/browser-info.js';
 
@@ -66,7 +65,8 @@ OptionsObserver.addListener('terms', async function reporting(terms) {
   }
 });
 
-debug.WTM = {
+// Debug tools
+(globalThis.ghostery ??= {}).WTM = {
   communication,
   urlReporter,
   config,

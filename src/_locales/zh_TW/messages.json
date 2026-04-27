@@ -48,6 +48,9 @@
   "add_website_exception": {
     "message": "新增網站例外"
   },
+  "additional_filters": {
+    "message": "額外篩選條件"
+  },
   "adjusted___tracker": {
     "message": "已調整",
     "description": "Singular form - tracker has been adjusted"
@@ -94,6 +97,9 @@
   "audio_video_player": {
     "message": "音訊/視訊播放器",
     "description": "Tracker category name"
+  },
+  "automatically_adjusted": {
+    "message": "已自動調整"
   },
   "automatically_paused_to_prevent_adblocker_breakage": {
     "message": "自動暫停以防止廣告攔截器失效"
@@ -164,6 +170,9 @@
   },
   "browser__vendor__version__language__operating_system_vendor": {
     "message": "瀏覽器：供應商、版本、語言、作業系統供應商"
+  },
+  "browser_redirect_protection": {
+    "message": "瀏覽器重新導向保護"
   },
   "browsing_assistant": {
     "message": "瀏覽助理"
@@ -347,6 +356,12 @@
   "enabled": {
     "message": "已啟用"
   },
+  "enabled__@_0_": {
+    "message": "已啟用：$${0}"
+  },
+  "ensures_your_clicks_go_directly_to_the_pages_you_select__without_unnecessary_tracking_detours_": {
+    "message": "確保您的點擊直接導向您選擇的頁面，避免不必要的追蹤繞道。"
+  },
   "enter_the_website_url_you_want_to_allow_redirects_from__ghostery_will_not_show_the_warning_page_for_this_domain_": {
     "message": "輸入您想允許重定向的網站 URL。Ghostery 將不會對此網域顯示警告頁面。"
   },
@@ -378,11 +393,11 @@
   "expand_ghostery_ad_blocking_to_search_engines_in_a_few_easy_steps_": {
     "message": "只需幾個簡單步驟，即可將 Ghostery 廣告攔截功能擴展到搜尋引擎。"
   },
-  "experimental_filters": {
-    "message": "實驗性過濾器"
-  },
   "export_to_file": {
     "message": "匯出到檔案"
+  },
+  "extend_your_protection_with_regional_and_custom_filters_for_advanced_control_": {
+    "message": "透過區域和自訂篩選條件，擴展您的防護以實現進階控制。"
   },
   "extension__version__installation_date__random_install_number__from_1_to_100___basic_settings__contribution_status": {
     "message": "擴充功能：版本、安裝日期、隨機安裝號碼（從1到100）、基本設定、貢獻狀態"
@@ -484,9 +499,6 @@
   "help_ghostery_fight_for_a_web_where_privacy_is_a_basic_human_right_": {
     "message": "協助 Ghostery 為建立以隱私為基本人權的網路而奮鬥。"
   },
-  "helps_ghostery_fix_broken_pages_faster__by_activating_you_can_test_experimental_filters_and_support_us_with_feedback__please_send_a_message_to_support@ghostery_com_describing_how_your_experience_changed_after_enabling_": {
-    "message": "幫助 Ghostery 更快修復損壞的頁面。通過啟用，您可以測試實驗性過濾器並通過反饋支持我們。請發送郵件至 support@ghostery.com，描述啟用後您的體驗有何改變。您的反饋對我們非常重要，能夠幫助我們改進服務，提供更好的用戶體驗。感謝您的支持和參與！"
-  },
   "hey__do_you_enjoy_ghostery_and_want_to_support_our_work_": {
     "message": "嗨，您喜歡使用 Ghostery 並願意鼓勵我們的工作嗎？"
   },
@@ -578,11 +590,20 @@
   "load_more": {
     "message": "載入更多"
   },
+  "manage_the_list_of_trackers_that_are_allowed_to_load_on_this_site_": {
+    "message": "管理此網站允許載入的追蹤器清單。"
+  },
+  "manage_the_list_of_websites_that_are_allowed_to_load_this_tracker_": {
+    "message": "管理允許載入此追蹤器的網站清單。"
+  },
   "manifest_name": {
     "message": "Ghostery 隱私廣告攔截器"
   },
   "manifest_short_description": {
     "message": "快速、私密、無廣告，值得您信賴的瀏覽體驗！"
+  },
+  "manually_adjusted": {
+    "message": "手動調整"
   },
   "menu": {
     "message": "選單"
@@ -633,11 +654,8 @@
   "no_exceptions_added_yet": {
     "message": "尚未添加例外"
   },
-  "no_protection_exceptions_added_yet": {
-    "message": "尚未添加任何防護例外。"
-  },
-  "no_websites_exceptions_added_yet": {
-    "message": "尚未新增網站例外"
+  "no_options_are_currently_enabled": {
+    "message": "目前沒有啟用任何選項"
   },
   "observed_activities": {
     "message": "已觀察的活動"
@@ -695,6 +713,9 @@
   "paused": {
     "message": "暫停"
   },
+  "paused_automatically_by_ghostery_s_browsing_assistant_to_prevent_ad_blocker_breakage_": {
+    "message": "Ghostery 瀏覽助理已自動暫停，以防止廣告阻擋器失效。"
+  },
   "paused_by_browsing_assistant": {
     "message": "瀏覽助理已暫停"
   },
@@ -725,8 +746,8 @@
   "prevents_various_tracking_techniques_using_ai_driven_technology_": {
     "message": "使用 AI 科技防止各種追蹤技術。"
   },
-  "prevents_websites_from_redirecting_you_through_tracking_services_or_unknown_destinations_that_may_compromise_your_privacy_or_security_": {
-    "message": "防止網站通過追蹤服務或未知目的地重定向，可能會危害您的隱私或安全。"
+  "prevents_websites_from_redirecting_your_clicks_through_tracking_urls_before_loading_the_destination_pages_": {
+    "message": "防止網站將您的點擊透過追蹤網址重新導向，然後才載入目標頁面。"
   },
   "print_to_pdf": {
     "message": "列印為 PDF"
@@ -758,8 +779,8 @@
   "redirect_protection": {
     "message": "重定向保護"
   },
-  "regional_filters": {
-    "message": "區域過濾器"
+  "regional_block_lists": {
+    "message": "區域封鎖清單"
   },
   "reload_to_see_changes": {
     "message": "重新載入以觀看變化。"
@@ -1034,8 +1055,8 @@
   "view_activity_details": {
     "message": "查看活動詳情"
   },
-  "view_details_logs": {
-    "message": "查看詳細日誌"
+  "view_detailed_logs": {
+    "message": "檢視詳細記錄"
   },
   "view_report": {
     "message": "查看報告"
@@ -1102,6 +1123,9 @@
   },
   "you_block_ads_on_the_sites_you_use__block_once__they_stay_ad_free_every_time_you_visit_": {
     "message": "您在使用的網站上阻擋廣告。只要阻擋一次，每次造訪時，這些網站都會保持無廣告狀態。"
+  },
+  "you_can_disable_it_in__a_href__@_0___whotracks_me_settings__a__": {
+    "message": "您可以在<a href=\"$${0}\">WhoTracks.Me 設定</a>中停用它。"
   },
   "you_re_about_to_remove_all_cookies_stored_by_@_0__": {
     "message": "您即將刪除由 $${0} 儲存的所有 Cookie。"

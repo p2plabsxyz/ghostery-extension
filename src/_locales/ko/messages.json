@@ -48,6 +48,9 @@
   "add_website_exception": {
     "message": "웹 사이트 예외 추가"
   },
+  "additional_filters": {
+    "message": "추가 필터"
+  },
   "adjusted___tracker": {
     "message": "변경됨",
     "description": "Singular form - tracker has been adjusted"
@@ -94,6 +97,9 @@
   "audio_video_player": {
     "message": "음악/동영상 플레이어",
     "description": "Tracker category name"
+  },
+  "automatically_adjusted": {
+    "message": "자동으로 조정됨"
   },
   "automatically_paused_to_prevent_adblocker_breakage": {
     "message": "광고 차단기 손상을 방지하기 위해 자동으로 일시 중지됨"
@@ -164,6 +170,9 @@
   },
   "browser__vendor__version__language__operating_system_vendor": {
     "message": "브라우저: 종류, 버전, 언어, 운영 체제"
+  },
+  "browser_redirect_protection": {
+    "message": "브라우저 리디렉션 보호"
   },
   "browsing_assistant": {
     "message": "브라우징 도우미"
@@ -347,6 +356,12 @@
   "enabled": {
     "message": "사용 중"
   },
+  "enabled__@_0_": {
+    "message": "활성화됨: $${0}"
+  },
+  "ensures_your_clicks_go_directly_to_the_pages_you_select__without_unnecessary_tracking_detours_": {
+    "message": "불필요한 추적 우회 없이 클릭이 선택한 페이지로 직접 이동하도록 보장합니다."
+  },
   "enter_the_website_url_you_want_to_allow_redirects_from__ghostery_will_not_show_the_warning_page_for_this_domain_": {
     "message": "리디렉션을 허용할 웹사이트 URL을 입력하세요. Ghostery는 이 도메인에 대해 경고 페이지를 표시하지 않습니다."
   },
@@ -378,11 +393,11 @@
   "expand_ghostery_ad_blocking_to_search_engines_in_a_few_easy_steps_": {
     "message": "몇 번의 쉬운 단계만으로 검색 엔진에 Ghostery 광고 차단 기능을 확장할 수 있습니다."
   },
-  "experimental_filters": {
-    "message": "실험적 필터"
-  },
   "export_to_file": {
     "message": "파일로 내보내기"
+  },
+  "extend_your_protection_with_regional_and_custom_filters_for_advanced_control_": {
+    "message": "고급 제어를 위한 지역 및 맞춤형 필터로 보호 기능을 확장하세요."
   },
   "extension__version__installation_date__random_install_number__from_1_to_100___basic_settings__contribution_status": {
     "message": "확장 프로그램: 버전, 설치 날짜, 무작위 설치 번호 (1에서 100까지), 기본 설정, 기여 상태"
@@ -484,9 +499,6 @@
   "help_ghostery_fight_for_a_web_where_privacy_is_a_basic_human_right_": {
     "message": "Ghostery가 개인정보 보호가 곧 기본권인 웹 생태계를 위해 싸울 수 있도록 도와주세요."
   },
-  "helps_ghostery_fix_broken_pages_faster__by_activating_you_can_test_experimental_filters_and_support_us_with_feedback__please_send_a_message_to_support@ghostery_com_describing_how_your_experience_changed_after_enabling_": {
-    "message": "이 항목을 사용하면 실험적 필터를 사용해보고 후기를 남겨 저희를 도울 수 있습니다. support@ghostery.com으로 메세지를 보내 사용 후 경험이 어떻게 바뀌었는지 알려주세요. Ghostery가 망가진 페이지를 더 빠르게 고치도록 돕습니다."
-  },
   "hey__do_you_enjoy_ghostery_and_want_to_support_our_work_": {
     "message": "Ghostery가 마음에 드셨다면 저희 제품을 함께 개선해보지 않으시겠습니까?"
   },
@@ -578,11 +590,20 @@
   "load_more": {
     "message": "더 보기"
   },
+  "manage_the_list_of_trackers_that_are_allowed_to_load_on_this_site_": {
+    "message": "이 사이트에서 로드하도록 허용된 트래커 목록을 관리합니다."
+  },
+  "manage_the_list_of_websites_that_are_allowed_to_load_this_tracker_": {
+    "message": "이 트래커를 로드하도록 허용된 웹사이트 목록을 관리합니다."
+  },
   "manifest_name": {
     "message": "Ghostery 개인정보 보호용 광고 차단기"
   },
   "manifest_short_description": {
     "message": "빠르고, 비공개이며, 광고 없는 브라우징을 믿고 사용하세요!"
+  },
+  "manually_adjusted": {
+    "message": "수동으로 조정됨"
   },
   "menu": {
     "message": "메뉴"
@@ -633,11 +654,8 @@
   "no_exceptions_added_yet": {
     "message": "예외가 아직 추가되지 않았습니다."
   },
-  "no_protection_exceptions_added_yet": {
-    "message": "아직 예외가 추가되지 않았습니다"
-  },
-  "no_websites_exceptions_added_yet": {
-    "message": "아직 웹 사이트 예외가 추가되지 않았습니다"
+  "no_options_are_currently_enabled": {
+    "message": "현재 활성화된 옵션이 없습니다"
   },
   "observed_activities": {
     "message": "감지된 활동"
@@ -695,6 +713,9 @@
   "paused": {
     "message": "일시 중지됨"
   },
+  "paused_automatically_by_ghostery_s_browsing_assistant_to_prevent_ad_blocker_breakage_": {
+    "message": "광고 차단기 오작동을 방지하기 위해 Ghostery의 브라우징 어시스턴트가 자동으로 일시 중지했습니다."
+  },
   "paused_by_browsing_assistant": {
     "message": "탐색 도우미에 의해 일시 중지됨"
   },
@@ -725,8 +746,8 @@
   "prevents_various_tracking_techniques_using_ai_driven_technology_": {
     "message": "AI 기반 기술을 사용하여 여러 추적 기술을 방지합니다."
   },
-  "prevents_websites_from_redirecting_you_through_tracking_services_or_unknown_destinations_that_may_compromise_your_privacy_or_security_": {
-    "message": "웹사이트가 사용자의 개인정보나 보안을 위협할 수 있는 추적 서비스나 알 수 없는 목적지로 리디렉션하는 것을 방지합니다."
+  "prevents_websites_from_redirecting_your_clicks_through_tracking_urls_before_loading_the_destination_pages_": {
+    "message": "웹사이트가 목적 페이지를 로드하기 전에 추적 URL을 통해 클릭을 리디렉션하는 것을 방지합니다."
   },
   "print_to_pdf": {
     "message": "PDF로 인쇄"
@@ -758,8 +779,8 @@
   "redirect_protection": {
     "message": "리디렉션 보호"
   },
-  "regional_filters": {
-    "message": "지역 필터"
+  "regional_block_lists": {
+    "message": "지역 차단 목록"
   },
   "reload_to_see_changes": {
     "message": "변경 내용을 보려면 다시 로드하십시오."
@@ -1034,8 +1055,8 @@
   "view_activity_details": {
     "message": "활동 세부정보 보기"
   },
-  "view_details_logs": {
-    "message": "세부 로그 보기"
+  "view_detailed_logs": {
+    "message": "자세한 로그 보기"
   },
   "view_report": {
     "message": "보고서 보기"
@@ -1102,6 +1123,9 @@
   },
   "you_block_ads_on_the_sites_you_use__block_once__they_stay_ad_free_every_time_you_visit_": {
     "message": "사용하는 사이트의 광고를 차단합니다. 한 번 차단하면 방문할 때마다 광고 없이 이용할 수 있습니다."
+  },
+  "you_can_disable_it_in__a_href__@_0___whotracks_me_settings__a__": {
+    "message": "<a href=\"$${0}\">WhoTracks.Me 설정</a>에서 비활성화할 수 있습니다."
   },
   "you_re_about_to_remove_all_cookies_stored_by_@_0__": {
     "message": "$${0}에 의해 저장된 모든 쿠키를 삭제하려고 합니다."

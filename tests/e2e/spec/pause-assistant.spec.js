@@ -10,98 +10,64 @@
  */
 
 import { browser, expect, $ } from '@wdio/globals';
-import { FLAG_PAUSE_ASSISTANT } from '@ghostery/config';
 
 import {
+  dismissPageNotification,
   enableExtension,
-  getExtensionPageURL,
-  getNotificationIframe,
+  expectNoPageNotification,
   sendMessage,
   setWhoTracksMeToggle,
   waitForIdleBackgroundTasks,
   ADBLOCKING_GLOBAL_SELECTOR,
-  dismissNotification,
+  expectAdsBlocked,
+  PAGE_DOMAIN,
+  PAGE_URL,
 } from '../utils.js';
 
-import { argv, PAGE_DOMAIN, PAGE_URL } from '../wdio.conf.js';
+describe('Pause Assistant', function () {
+  async function clearConfig() {
+    await browser.url('ghostery:panel');
+    await sendMessage({ action: 'e2e:setConfigDomains', domains: {} });
+    await waitForIdleBackgroundTasks();
+  }
 
-// IMPORTANT: The feature relys on the notifications, so the tests must be run always with
-// and after notifications.spec.js (other notifications must not interfere with the tests)
+  before(enableExtension);
 
-if (argv.flags.includes(FLAG_PAUSE_ASSISTANT)) {
-  describe('Pause Assistant', function () {
-    before(enableExtension);
-
-    before(async () => {
-      await browser.url(getExtensionPageURL('panel'));
-      await sendMessage({
-        action: 'e2e:setConfigDomains',
-        domains: { [PAGE_DOMAIN]: { actions: ['pause-assistant'] } },
-      });
-
-      await waitForIdleBackgroundTasks();
+  before(async () => {
+    await browser.url('ghostery:panel');
+    await sendMessage({
+      action: 'e2e:setConfigDomains',
+      domains: { [PAGE_DOMAIN]: { actions: ['pause-assistant'] } },
     });
-
-    after(async () => {
-      await browser.url(getExtensionPageURL('panel'));
-      await sendMessage({ action: 'e2e:setConfigDomains', domains: {} });
-
-      await waitForIdleBackgroundTasks();
-    });
-
-    it('does not pause the domain if the feature is turned off', async function () {
-      await setWhoTracksMeToggle('pauseAssistant', false);
-
-      await browser.url(PAGE_URL, { wait: 'complete' });
-
-      await expect(getNotificationIframe('pause-assistant')).not.toExist();
-      await expect(getNotificationIframe('pause-resume')).not.toExist();
-    });
-
-    it('pauses the domain when the feature is turned on', async function () {
-      await setWhoTracksMeToggle('pauseAssistant', true);
-
-      await browser.url(PAGE_URL, { wait: 'complete' });
-
-      // Ads are showned
-      await expect($(ADBLOCKING_GLOBAL_SELECTOR)).toBeDisplayed();
-
-      // Notification is shown
-      await expect(getNotificationIframe('pause-assistant')).toExist();
-
-      // Notification is shown again after reload (until user interacts with it)
-      await browser.url(PAGE_URL, { wait: 'complete' });
-      const iframe = getNotificationIframe('pause-assistant');
-      await expect(iframe).toExist();
-
-      // Dismiss the notification
-      await dismissNotification('pause-assistant');
-
-      // Ensure iframe is closed after dismissing
-      await expect(getNotificationIframe('pause-assistant')).not.toExist();
-
-      // Notification is not shown after dismissing
-      await browser.url(PAGE_URL, { wait: 'complete' });
-      await expect(getNotificationIframe('pause-assistant')).not.toExist();
-    });
-
-    it('resumes when action is removed from config', async function () {
-      await browser.url(getExtensionPageURL('panel'));
-      await sendMessage({ action: 'e2e:setConfigDomains', domains: {} });
-
-      await waitForIdleBackgroundTasks();
-
-      await browser.url(PAGE_URL, { wait: 'complete' });
-
-      const iframe = getNotificationIframe('pause-resume');
-      await expect(iframe).toExist();
-
-      // Dismiss the notification
-      await dismissNotification('pause-resume');
-
-      // Adblocking is active again
-      await browser.url(PAGE_URL, { wait: 'complete' });
-      await expect($(ADBLOCKING_GLOBAL_SELECTOR)).not.toBeDisplayed();
-    });
+    await waitForIdleBackgroundTasks();
   });
-}
+
+  after(clearConfig);
+
+  it('does not pause the domain if the feature is turned off', async function () {
+    await setWhoTracksMeToggle('pauseAssistant', false);
+
+    await browser.url(PAGE_URL);
+
+    await expectNoPageNotification(PAGE_URL, 'pause-assistant');
+    await expectNoPageNotification(PAGE_URL, 'pause-resume');
+
+    await setWhoTracksMeToggle('pauseAssistant', true);
+  });
+
+  it('pauses the domain when the feature is turned on', async function () {
+    // Dismiss the notification
+    await dismissPageNotification(PAGE_URL, 'pause-assistant');
+
+    // Ads are shown
+    await expect($(ADBLOCKING_GLOBAL_SELECTOR)).toBeDisplayed();
+
+    // resume when action is removed from config
+    await clearConfig();
+
+    // Reload to page and dismiss the notification
+    await dismissPageNotification(PAGE_URL, 'pause-resume');
+
+    await expectAdsBlocked();
+  });
+});

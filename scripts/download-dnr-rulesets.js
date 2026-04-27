@@ -13,7 +13,7 @@ import { writeFileSync, existsSync, mkdirSync } from 'node:fs';
 
 import REGIONS from '../src/utils/regions.js';
 import { CDN_HOSTNAME, RESOURCES_PATH } from './utils/urls.js';
-import { filterMaxPriorityRules } from '../src/utils/dnr.js';
+import { groupRulesetFile } from './group-dnr-rulesets.js';
 
 if (!existsSync(RESOURCES_PATH)) {
   mkdirSync(RESOURCES_PATH, { recursive: true });
@@ -30,8 +30,19 @@ const RULESETS = {
   }, {}),
 };
 
+/**
+ * @param {Response} res
+ */
+function handleResponse(res) {
+  if (!res.ok) {
+    throw new Error(`Failed to fetch: ${res.url} ${res.status}`);
+  }
+  return res.json();
+}
+
 for (const [name, target] of Object.entries(RULESETS)) {
   const outputPath = `${RESOURCES_PATH}/dnr-${target}.json`;
+  const metadataPath = `${RESOURCES_PATH}/dnr-${target}.metadata.json`;
 
   if (existsSync(outputPath)) {
     continue;
@@ -42,32 +53,27 @@ for (const [name, target] of Object.entries(RULESETS)) {
 
   const list = await fetch(
     `https://${CDN_HOSTNAME}/adblocker/configs/${name}/allowed-lists.json`,
-  ).then((res) => {
-    if (!res.ok) {
-      throw new Error(
-        `Failed to download allowed list for "${name}": ${res.status}: ${res.statusText}`,
-      );
-    }
-
-    return res.json();
-  });
+  ).then(handleResponse);
 
   /* DNR rules */
 
   if (list.dnr) {
-    const dnr = await fetch(list.dnr.url || list.dnr.network)
-      .then((res) => {
-        if (!res.ok) {
-          throw new Error(
-            `Failed to fetch DNR rules for "${name}": ${res.status}: ${res.statusText}`,
-          );
-        }
-
-        return res.json();
-      })
-      .then(filterMaxPriorityRules);
+    const dnr = await fetch(list.dnr.url || list.dnr.network).then(handleResponse);
 
     writeFileSync(outputPath, JSON.stringify(dnr, null, 2));
+
+    if (list.dnr.metadataUrl) {
+      const metadata = await fetch(list.dnr.metadataUrl).then(handleResponse);
+
+      if (Object.keys(metadata).length !== 0) {
+        writeFileSync(metadataPath, JSON.stringify(metadata, null, 2));
+      }
+    }
+
+    // Group the freshly downloaded ruleset in place so the optimization
+    // is persisted in src/rule_resources and does not need to run on every build.
+    groupRulesetFile(outputPath);
+
     process.stdout.write(' done\n');
   }
 }

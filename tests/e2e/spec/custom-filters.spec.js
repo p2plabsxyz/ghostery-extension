@@ -12,70 +12,68 @@ import { browser, expect, $ } from '@wdio/globals';
 import {
   enableExtension,
   getExtensionElement,
-  setPrivacyToggle,
-  openPanel,
+  setAdditionalFiltersToggle,
   setCustomFilters,
+  disableCustomFilters,
   switchFrame,
+  PAGE_DOMAIN,
+  PAGE_URL,
 } from '../utils.js';
-
-import { PAGE_DOMAIN, PAGE_URL } from '../wdio.conf.js';
 
 describe('Custom Filters', function () {
   before(enableExtension);
-  after(async () => {
-    await setPrivacyToggle('custom-filters', false);
+  before(async () => {
+    await setCustomFilters([
+      `${PAGE_DOMAIN}###custom-filter`,
+      `@@connect.facebook.net^`,
+      `/.*example.com/`,
+      `${PAGE_DOMAIN}##+js(rpnt, h1, Test Page, "Hello world")`,
+      `${PAGE_DOMAIN}##+js(no-fetch-if, ads.js, war:noop.js)`,
+      `!#if env_chromium
+      ||example.net^
+      !#endif`,
+      `!#if env_firefox
+      ||example.org^
+      !#endif`,
+    ]);
   });
 
-  it('disables custom filters', async function () {
-    await setCustomFilters([`${PAGE_DOMAIN}###custom-filter`]);
-    await setPrivacyToggle('custom-filters', false);
+  after(disableCustomFilters);
+
+  it('disables custom filters by toggle', async function () {
+    await setAdditionalFiltersToggle('custom-filters', false);
 
     await browser.url(PAGE_URL);
     await expect($('#custom-filter')).toBeDisplayed();
 
-    await openPanel();
+    await browser.url('ghostery:panel');
     await getExtensionElement('button:detailed-view').click();
 
     await expect(getExtensionElement('icon:tracker:facebook_connect:blocked')).toBeDisplayed();
+
+    await setAdditionalFiltersToggle('custom-filters', true);
   });
 
-  it('adds custom network filter', async function () {
-    await setCustomFilters([`@@connect.facebook.net^`]);
-
+  it('supports custom network filter', async function () {
     await browser.url(PAGE_URL);
 
-    await openPanel();
+    await browser.url('ghostery:panel');
     await getExtensionElement('button:detailed-view').click();
 
     await expect(getExtensionElement(`icon:tracker:facebook_connect:blocked`)).not.toBeDisplayed();
     await expect(getExtensionElement(`icon:tracker:facebook_connect:modified`)).not.toBeDisplayed();
   });
 
-  it('adds supported custom regex filter', async function () {
-    await setCustomFilters([`/.*example.com/`]);
-
+  it('supports regex filter', async function () {
     await browser.url(PAGE_URL);
 
-    await openPanel();
+    await browser.url('ghostery:panel');
     await getExtensionElement('button:detailed-view').click();
 
     await expect(getExtensionElement(`icon:tracker:www.example.com:blocked`)).toBeDisplayed();
   });
 
-  if (browser.isChromium) {
-    it('adds unsupported custom regex filter', async function () {
-      await setCustomFilters([`/(?>ab)c/`], async () => {
-        const errors = await getExtensionElement('component:custom-filters:errors');
-
-        const text = await errors.getText();
-        await expect(text).toContain('Could not apply a custom filter');
-      });
-    });
-  }
-
-  it('adds custom cosmetic filter', async function () {
-    await setCustomFilters([`${PAGE_DOMAIN}###custom-filter`]);
-
+  it('supports cosmetic filter', async function () {
     await browser.url(PAGE_URL);
     await expect($('#custom-filter')).not.toBeDisplayed();
 
@@ -91,30 +89,52 @@ describe('Custom Filters', function () {
     await browser.switchFrame(null);
   });
 
-  it('adds custom scriptlet filter', async function () {
-    await setCustomFilters([`${PAGE_DOMAIN}##+js(rpnt, h1, Test Page, "Hello world")`]);
-
+  it('supports scriptlet filter', async function () {
     await browser.url(PAGE_URL);
     await expect($('h1')).toHaveText('Hello world');
   });
 
-  it('adds custom scriptlet filter depending on `scriptletsGlobal.warOrigin`', async function () {
-    await setCustomFilters([`${PAGE_DOMAIN}##+js(no-fetch-if, ads.js, war:noop.js)`]);
-
+  it('supports scriptlet filter depending on `scriptletsGlobal.warOrigin`', async function () {
     await browser.url(PAGE_URL);
     await $('#war').waitForExist();
     await expect($('#war')).toHaveText('(function(){"use strict"})();');
   });
 
+  it('applies preprocessor to the network filter', async function () {
+    await browser.url(PAGE_URL);
+
+    await browser.url('ghostery:panel');
+    await getExtensionElement('button:detailed-view').click();
+
+    if (browser.isChromium) {
+      await expect(getExtensionElement(`icon:tracker:www.example.net:blocked`)).toBeDisplayed();
+      await expect(getExtensionElement(`icon:tracker:www.example.org:blocked`)).not.toBeDisplayed();
+    } else if (browser.isFirefox) {
+      await expect(getExtensionElement(`icon:tracker:www.example.net:blocked`)).not.toBeDisplayed();
+      await expect(getExtensionElement(`icon:tracker:www.example.org:blocked`)).toBeDisplayed();
+    }
+  });
+
   // Scope for Firefox webRequest API tests
   if (browser.isFirefox) {
-    it('adds $replace network filter', async function () {
+    it('supports $replace network filter', async function () {
       await setCustomFilters([
         `||${PAGE_DOMAIN}^$replace=/<title>.*<\\/title>/<title>hello world<\\/title>/`,
       ]);
 
       await browser.url(PAGE_URL);
       await expect(await browser.getTitle()).toBe('hello world');
+    });
+  }
+
+  if (browser.isChromium) {
+    it('throws for unsupported regex filter', async function () {
+      await setCustomFilters([`/(?>ab)c/`]);
+
+      const errors = await getExtensionElement('component:custom-filters:errors');
+
+      const text = await errors.getText();
+      await expect(text).toContain('Filter not supported');
     });
   }
 });

@@ -48,6 +48,9 @@
   "add_website_exception": {
     "message": "Ajouter une exception de site web"
   },
+  "additional_filters": {
+    "message": "Filtres supplémentaires"
+  },
   "adjusted___tracker": {
     "message": "ajusté",
     "description": "Singular form - tracker has been adjusted"
@@ -94,6 +97,9 @@
   "audio_video_player": {
     "message": "Lecteur audio/vidéo ",
     "description": "Tracker category name"
+  },
+  "automatically_adjusted": {
+    "message": "Ajusté automatiquement"
   },
   "automatically_paused_to_prevent_adblocker_breakage": {
     "message": "Mis en pause automatiquement pour éviter les dysfonctionnements liés au bloqueur de publicités."
@@ -164,6 +170,9 @@
   },
   "browser__vendor__version__language__operating_system_vendor": {
     "message": "navigateur : fournisseur, version, langue, fournisseur du système d'exploitation"
+  },
+  "browser_redirect_protection": {
+    "message": "Protection contre les redirections de navigateur"
   },
   "browsing_assistant": {
     "message": "Assistant de navigation"
@@ -347,6 +356,12 @@
   "enabled": {
     "message": "Activé"
   },
+  "enabled__@_0_": {
+    "message": "Activé : $${0}"
+  },
+  "ensures_your_clicks_go_directly_to_the_pages_you_select__without_unnecessary_tracking_detours_": {
+    "message": "Garantit que vos clics mènent directement aux pages choisies, sans détours de suivi inutiles."
+  },
   "enter_the_website_url_you_want_to_allow_redirects_from__ghostery_will_not_show_the_warning_page_for_this_domain_": {
     "message": "Saisissez l’URL du site Web depuis lequel vous souhaitez autoriser les redirections. Ghostery n’affichera plus la page d’avertissement pour ce domaine."
   },
@@ -378,11 +393,11 @@
   "expand_ghostery_ad_blocking_to_search_engines_in_a_few_easy_steps_": {
     "message": "Étendez le blocage des publicités de Ghostery aux moteurs de recherche en quelques étapes simples."
   },
-  "experimental_filters": {
-    "message": "Filtres expérimentaux"
-  },
   "export_to_file": {
     "message": "Exporter vers un fichier"
+  },
+  "extend_your_protection_with_regional_and_custom_filters_for_advanced_control_": {
+    "message": "Étendez votre protection avec des filtres régionaux et personnalisés pour un contrôle avancé."
   },
   "extension__version__installation_date__random_install_number__from_1_to_100___basic_settings__contribution_status": {
     "message": "extension : version, date d'installation, numéro d'installation aléatoire (de 1 à 100), paramètres de base, statut de contribution"
@@ -484,9 +499,6 @@
   "help_ghostery_fight_for_a_web_where_privacy_is_a_basic_human_right_": {
     "message": "Aidez Ghostery à lutter pour un Web où la vie privée est un droit humain fondamental."
   },
-  "helps_ghostery_fix_broken_pages_faster__by_activating_you_can_test_experimental_filters_and_support_us_with_feedback__please_send_a_message_to_support@ghostery_com_describing_how_your_experience_changed_after_enabling_": {
-    "message": "Aide Ghostery à réparer les pages défectueuses plus rapidement. En activant, vous pouvez tester des filtres expérimentaux et nous soutenir avec vos retours. Veuillez envoyer un message à support@ghostery.com décrivant comment votre expérience a changé après l'activation."
-  },
   "hey__do_you_enjoy_ghostery_and_want_to_support_our_work_": {
     "message": "Vous appréciez Ghostery et souhaitez soutenir notre travail ?"
   },
@@ -578,11 +590,20 @@
   "load_more": {
     "message": "Charger plus"
   },
+  "manage_the_list_of_trackers_that_are_allowed_to_load_on_this_site_": {
+    "message": "Gérez la liste des trackers autorisés à se charger sur ce site."
+  },
+  "manage_the_list_of_websites_that_are_allowed_to_load_this_tracker_": {
+    "message": "Gérez la liste des sites web autorisés à charger ce tracker."
+  },
   "manifest_name": {
-    "message": "Ghostery - Bloqueur de publicités"
+    "message": "Ghostery Bloqueur Pub & Anti-Tracking"
   },
   "manifest_short_description": {
     "message": "Navigation rapide, privée et sans publicité, en toute confiance !"
+  },
+  "manually_adjusted": {
+    "message": "Ajusté manuellement"
   },
   "menu": {
     "message": "Menu"
@@ -633,11 +654,8 @@
   "no_exceptions_added_yet": {
     "message": "Aucune exception ajoutée pour le moment"
   },
-  "no_protection_exceptions_added_yet": {
-    "message": "Aucune exception de protection ajoutée pour le moment"
-  },
-  "no_websites_exceptions_added_yet": {
-    "message": "Aucune exception de site web ajoutée pour l'instant"
+  "no_options_are_currently_enabled": {
+    "message": "Aucune option n’est actuellement activée."
   },
   "observed_activities": {
     "message": "Activités observées"
@@ -695,6 +713,9 @@
   "paused": {
     "message": "En pause"
   },
+  "paused_automatically_by_ghostery_s_browsing_assistant_to_prevent_ad_blocker_breakage_": {
+    "message": "Mis en pause automatiquement par l'Assistant de navigation de Ghostery pour éviter les dysfonctionnements du bloqueur de publicités."
+  },
   "paused_by_browsing_assistant": {
     "message": "Suspendu par l'assistant de navigation"
   },
@@ -725,8 +746,8 @@
   "prevents_various_tracking_techniques_using_ai_driven_technology_": {
     "message": "Empêche différentes techniques de suivi à l'aide d'une technologie basée sur l'IA."
   },
-  "prevents_websites_from_redirecting_you_through_tracking_services_or_unknown_destinations_that_may_compromise_your_privacy_or_security_": {
-    "message": "Empêche les sites de vous rediriger via des services de suivi ou vers des destinations inconnues susceptibles de compromettre votre confidentialité ou votre sécurité."
+  "prevents_websites_from_redirecting_your_clicks_through_tracking_urls_before_loading_the_destination_pages_": {
+    "message": "Empêche les sites web de rediriger vos clics via des URL de suivi avant de charger les pages de destination."
   },
   "print_to_pdf": {
     "message": "Imprimer en PDF"
@@ -758,8 +779,8 @@
   "redirect_protection": {
     "message": "Protection contre les redirections"
   },
-  "regional_filters": {
-    "message": "Filtres régionaux"
+  "regional_block_lists": {
+    "message": "Listes de blocage régionales"
   },
   "reload_to_see_changes": {
     "message": "Actualisez pour voir les modifications"
@@ -1034,7 +1055,7 @@
   "view_activity_details": {
     "message": "Afficher les détails de l'activité"
   },
-  "view_details_logs": {
+  "view_detailed_logs": {
     "message": "Afficher les journaux détaillés"
   },
   "view_report": {
@@ -1102,6 +1123,9 @@
   },
   "you_block_ads_on_the_sites_you_use__block_once__they_stay_ad_free_every_time_you_visit_": {
     "message": "Vous bloquez les publicités sur les sites que vous utilisez. Bloquez-les une fois. Ils resteront sans publicité à chaque visite."
+  },
+  "you_can_disable_it_in__a_href__@_0___whotracks_me_settings__a__": {
+    "message": "Vous pouvez le désactiver dans les <a href=\"$${0}\">paramètres de WhoTracks.Me</a>."
   },
   "you_re_about_to_remove_all_cookies_stored_by_@_0__": {
     "message": "Vous êtes sur le point de supprimer tous les cookies enregistrés par $${0}."

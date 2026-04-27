@@ -14,12 +14,7 @@ import { resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { $, expect } from '@wdio/globals';
 
-import {
-  getExtensionElement,
-  getExtensionPageURL,
-  setConfigFlags,
-  waitForIdleBackgroundTasks,
-} from './utils.js';
+import { getExtensionElement, waitForIdleBackgroundTasks, PAGE_PORT } from './utils.js';
 import * as wdio from './wdio.conf.js';
 
 import { setupTestPage } from './page/server.js';
@@ -31,12 +26,12 @@ import { setupTestPage } from './page/server.js';
  */
 export const config = {
   ...wdio.config,
+  // We include only main features, which can be affected by the extension update. It speed up the tests
+  // and avoid long living session issues (especially in Firefox) that can cause false positives in CI
+  specs: [wdio.config.specs[0]],
   exclude: [
     // The onboarding spec must be skipped as the extension is already installed and enabled
     './spec/onboarding.spec.js',
-    // The attribution spec relates to the code running only on the first install
-    // and can't be run during the update process.
-    './spec/attribution.spec.js',
   ],
   onPrepare: async (config, capabilities) => {
     if (wdio.argv.clean) {
@@ -102,7 +97,7 @@ export const config = {
         }
       }
 
-      setupTestPage(wdio.PAGE_PORT);
+      setupTestPage(PAGE_PORT);
     } catch (e) {
       console.error('Error while preparing test environment', e);
       process.exit(1);
@@ -113,7 +108,7 @@ export const config = {
 
     try {
       // Enable the extension
-      await browser.url(getExtensionPageURL('onboarding'));
+      await browser.url('ghostery:onboarding');
       await getExtensionElement('button:enable').click();
 
       // Reload extension with the source
@@ -152,11 +147,9 @@ export const config = {
 
       await browser.pause(5000);
 
-      await browser.url(getExtensionPageURL('settings'));
+      await browser.url('ghostery:settings');
       await expect(getExtensionElement('page:settings')).toBeDisplayed();
       await waitForIdleBackgroundTasks();
-
-      await setConfigFlags(wdio.argv.flags);
 
       console.log('Extension updated...');
     } catch (e) {
