@@ -9,6 +9,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0
  */
 
+import { bootstrapEmbedded, isEmbeddedHost } from './peersky-bootstrap.js';
+
+if (__CHROMIUM__ && isEmbeddedHost()) {
+  bootstrapEmbedded();
+}
+
 import '/ui/localize.js';
 
 import './onboarding.js';

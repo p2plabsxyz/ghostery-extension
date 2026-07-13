@@ -331,7 +331,7 @@ export async function revokeGlobalPause(options) {
 
 export function getPausedDetails(options, hostname) {
   if (!hostname) {
-    throw new Error('Hostname is required to get paused details');
+    return null;
   }
 
   if (isGloballyPaused(options)) {

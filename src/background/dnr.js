@@ -23,6 +23,7 @@ import { isFilterConditionAccepted } from '/utils/engines.js';
 import { UPDATE_ENGINES_DELAY } from './adblocker/engines.js';
 import { updateRedirectProtectionRules } from './redirect-protection.js';
 import { captureException } from '/utils/errors.js';
+import { isEmbeddedHost } from './peersky-bootstrap.js';
 
 if (__CHROMIUM__) {
   const DNR_RESOURCES = chrome.runtime
@@ -72,6 +73,16 @@ if (__CHROMIUM__) {
   }
 
   function getIds(options) {
+    if (!options.terms && isEmbeddedHost() && options.terms !== false) {
+      options = {
+        ...options,
+        terms: true,
+        blockAds: options.blockAds ?? true,
+        blockTrackers: options.blockTrackers ?? true,
+        blockAnnoyances: options.blockAnnoyances ?? true,
+      };
+    }
+
     const debug = store.get(FilteringDebug);
     const networkDisabled = store.ready(debug) && !debug.network;
 
@@ -102,6 +113,41 @@ if (__CHROMIUM__) {
     return ids;
   }
 
+  async function updateStaticRulesets(nextRulesetIds) {
+    const currentRulesetIds = await chrome.declarativeNetRequest.getEnabledRulesets();
+
+    const enableRulesetIds = [];
+    for (const id of nextRulesetIds) {
+      if (!currentRulesetIds.includes(id)) enableRulesetIds.push(id);
+    }
+
+    const disableRulesetIds = [];
+    for (const id of currentRulesetIds) {
+      if (!nextRulesetIds.includes(id)) disableRulesetIds.push(id);
+    }
+
+    if (!enableRulesetIds.length && !disableRulesetIds.length) return;
+
+    try {
+      await chrome.declarativeNetRequest.updateEnabledRulesets({
+        enableRulesetIds,
+        disableRulesetIds,
+      });
+
+      console.info(
+        '[dnr] Updated static rulesets:',
+        nextRulesetIds.length ? nextRulesetIds.join(', ') : 'none',
+      );
+
+      if (enableRulesetIds.length > 0) {
+        await Promise.all(enableRulesetIds.map((id) => disableExcludedRulesByPreprocessor(id)));
+      }
+    } catch (e) {
+      console.error(`[dnr] Error while updating static rulesets:`, e);
+      captureException(e, { critical: true, once: true });
+    }
+  }
+
   // Ensure that DNR rulesets are equal to those from options.
   // eg. when web extension updates, the rulesets are reset
   // to the value from the manifest.
@@ -117,6 +163,8 @@ if (__CHROMIUM__) {
       // No changes in options triggering an update, skip updating rules
       return;
     }
+
+    await updateStaticRulesets(nextRulesetIds);
 
     // Add latest fixes rules
     const resources = await store.resolve(Resources);
@@ -222,40 +270,7 @@ if (__CHROMIUM__) {
       }
     }
 
-    const currentRulesetIds = await chrome.declarativeNetRequest.getEnabledRulesets();
-
-    const enableRulesetIds = [];
-    for (const id of nextRulesetIds) {
-      if (!currentRulesetIds.includes(id)) enableRulesetIds.push(id);
-    }
-
-    const disableRulesetIds = [];
-    for (const id of currentRulesetIds) {
-      if (!nextRulesetIds.includes(id)) disableRulesetIds.push(id);
-    }
-
-    // Update static rulesets
-    if (enableRulesetIds.length || disableRulesetIds.length) {
-      try {
-        await chrome.declarativeNetRequest.updateEnabledRulesets({
-          enableRulesetIds,
-          disableRulesetIds,
-        });
-
-        console.info(
-          '[dnr] Updated static rulesets:',
-          nextRulesetIds.length ? nextRulesetIds.join(', ') : 'none',
-        );
-
-        // Disable rules excluded by preprocessors in added rulesets
-        if (enableRulesetIds.length > 0) {
-          await Promise.all(enableRulesetIds.map((id) => disableExcludedRulesByPreprocessor(id)));
-        }
-      } catch (e) {
-        console.error(`[dnr] Error while updating static rulesets:`, e);
-        captureException(e, { critical: true, once: true });
-      }
-    }
+    await updateStaticRulesets(nextRulesetIds);
   }
 
   OptionsObserver.addListener(syncDNR);

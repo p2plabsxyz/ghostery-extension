@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Ghostery Browser Extension
  * https://www.ghostery.com/
  *
@@ -59,6 +59,10 @@ const argv = process.argv.slice(2).reduce(
     automation: false,
   },
 );
+
+if (process.platform === 'win32') {
+  argv['no-filename-limit'] = true;
+}
 
 // --- Automation patch ---
 function applyAutomationPatch(distDir) {
@@ -327,13 +331,13 @@ const redirectResources = readdirSync(resolve(options.outDir, 'rule_resources/re
 
 if (manifest.manifest_version === 3) {
   manifest.web_accessible_resources.push({
-    resources: redirectResources.map((filename) => join('rule_resources/redirects', filename)),
+    resources: redirectResources.map((filename) => 'rule_resources/redirects/' + filename),
     matches: ['<all_urls>'],
     use_dynamic_url: true,
   });
 } else {
   redirectResources.forEach((filename) => {
-    manifest.web_accessible_resources.push(join('rule_resources/redirects', filename));
+    manifest.web_accessible_resources.push('rule_resources/redirects/' + filename);
   });
 }
 
@@ -372,7 +376,7 @@ manifest.web_accessible_resources?.forEach((entry) => {
   }
 
   paths.forEach((path) => {
-    if (path.includes('/redirects/')) return;
+    if (path.replace(/\\/g, '/').includes('/redirects/')) return;
 
     if (path.match(/\.(html)$/)) {
       source.push(path);
@@ -401,6 +405,72 @@ if (manifest.permissions.includes('declarativeNetRequest') && argv.watch) {
 writeFileSync(resolve(options.outDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
 
 // --- Build  ---
+
+function rewriteVirtualModulePath(specifier) {
+  return specifier
+    .replace(/virtual\/C_[^"']+?\/npm\//g, 'npm/')
+    .replace(/virtual\/C_[^"']+?\/src\//g, '');
+}
+
+function findNestedDir(root, name) {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const full = join(root, entry.name);
+    if (entry.name === name) return full;
+    const nested = findNestedDir(full, name);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function normalizeDistModulePaths(outDir) {
+  const virtualRoot = join(outDir, 'virtual');
+  if (!existsSync(virtualRoot)) return;
+
+  const rolldownRuntime = join(virtualRoot, '_rolldown', 'runtime.js');
+  const rolldownRuntimeCode = existsSync(rolldownRuntime)
+    ? readFileSync(rolldownRuntime, 'utf8')
+    : null;
+
+  const npmSrc = findNestedDir(virtualRoot, 'npm');
+  if (npmSrc) {
+    cpSync(npmSrc, join(outDir, 'npm'), { recursive: true });
+  }
+
+  const walkJs = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'virtual') continue;
+        walkJs(full);
+      } else if (entry.name.endsWith('.js')) {
+        const code = readFileSync(full, 'utf8');
+        const next = rewriteVirtualModulePath(code);
+        if (next !== code) writeFileSync(full, next);
+      }
+    }
+  };
+
+  walkJs(outDir);
+  rmSync(virtualRoot, { recursive: true, force: true });
+
+  if (rolldownRuntimeCode) {
+    const dest = join(outDir, 'virtual', '_rolldown', 'runtime.js');
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, rolldownRuntimeCode);
+  }
+}
+
+function stripVirtualChunkName(name) {
+  let stripped = rewriteVirtualModulePath(name);
+  const virtualSrc =
+    'virtual/' + process.cwd().replace(/:\\?/, '_/').replace(/\\/g, '/') + '/src/';
+  const virtualNm =
+    'virtual/' + process.cwd().replace(/:\\?/, '_/').replace(/\\/g, '/') + '/node_modules/';
+  if (stripped.startsWith(virtualSrc)) stripped = stripped.slice(virtualSrc.length);
+  if (stripped.startsWith(virtualNm)) stripped = 'npm/' + stripped.slice(virtualNm.length);
+  return stripped;
+}
 
 function mapPaths(paths) {
   return paths.reduce((acc, src) => {
@@ -492,13 +562,23 @@ const buildPromise = build({
       output: {
         dir: options.outDir,
         preserveModules: true,
-        preserveModulesRoot: 'src',
+        preserveModulesRoot: options.srcDir.replace(/\\/g, '/'),
         virtualDirname: 'virtual',
         minifyInternalExports: false,
         entryFileNames: (chunk) =>
-          `${chunk.name.replace(/\.(png|jpg|jpeg|gif|svg|webp)$/, '').replace(/\?[^.]*$/, '')}.js`,
-
-        assetFileNames: 'assets/[name]-[hash].[ext]',
+          `${stripVirtualChunkName(chunk.name)
+            .replace(/\.(png|jpg|jpeg|gif|svg|webp)$/, '')
+            .replace(/\?[^.]*$/, '')}.js`,
+        chunkFileNames: (chunk) =>
+          `${stripVirtualChunkName(chunk.name)
+            .replace(/\.(png|jpg|jpeg|gif|svg|webp)$/, '')
+            .replace(/\?[^.]*$/, '')}.js`,
+        assetFileNames: (assetInfo) => {
+          const name = stripVirtualChunkName(
+            assetInfo.name || (assetInfo.names && assetInfo.names[0]) || '',
+          );
+          return `assets/${name.replace(/\//g, '-')}-[hash].[ext]`;
+        },
         sanitizeFileName: (name) => {
           name = name
             .replace(/[\0?*]+/g, '_')
@@ -676,6 +756,7 @@ for (const [id, path] of Object.entries(mapPaths(content_scripts))) {
 
 if (argv.automation && !argv.watch) {
   await Promise.all([buildPromise, ...contentScriptBuilds]);
+  normalizeDistModulePaths(options.outDir);
   applyAutomationPatch(options.outDir);
 }
 
@@ -684,6 +765,7 @@ if (argv.watch) {
     watchEmitter.on('event', function callback(e) {
       if (e.code === 'BUNDLE_END') {
         watchEmitter.off('event', callback);
+        normalizeDistModulePaths(options.outDir);
 
         let settings;
         switch (argv.target) {
@@ -728,4 +810,8 @@ if (argv.watch) {
       }
     }),
   );
+} else if (!argv.automation) {
+  await buildPromise;
+  await Promise.all(contentScriptBuilds);
+  normalizeDistModulePaths(options.outDir);
 }
