@@ -46,12 +46,15 @@ export const config = {
 
       if (!version) {
         execSync('git fetch --tags --quiet');
-        version = execSync(
-          'git tag --sort=-creatordate | grep -E "^v[0-9]+\\.[0-9]+\\.[0-9]+$" | head -n 1',
-        )
-          .toString()
-          .trim()
-          .slice(1);
+        // Prefer semver order so fork tags like v1.1.0 do not beat upstream v10.x.
+        const tag = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
+          .split(/\r?\n/)
+          .map((t) => t.trim())
+          .find((t) => /^v\d+\.\d+\.\d+$/.test(t));
+        if (!tag) {
+          throw new Error('Could not determine the last release tag to update from.');
+        }
+        version = tag.slice(1);
       }
 
       for (const capability of capabilities) {
@@ -63,7 +66,7 @@ export const config = {
         // Download build artifacts
         if (!existsSync(buildPath)) {
           console.log(`Downloading Ghostery extension from ${url}${fileName}`);
-          execSync(`curl -L -o ${buildPath} "${url}${fileName}"`);
+          execSync(`curl -fL -o ${buildPath} "${url}${fileName}"`);
         }
 
         switch (capability.browserName) {

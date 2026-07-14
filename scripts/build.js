@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Ghostery Browser Extension
  * https://www.ghostery.com/
  *
@@ -463,10 +463,9 @@ function normalizeDistModulePaths(outDir) {
 
 function stripVirtualChunkName(name) {
   let stripped = rewriteVirtualModulePath(name);
-  const virtualSrc =
-    'virtual/' + process.cwd().replace(/:\\?/, '_/').replace(/\\/g, '/') + '/src/';
-  const virtualNm =
-    'virtual/' + process.cwd().replace(/:\\?/, '_/').replace(/\\/g, '/') + '/node_modules/';
+  const cwdVirtual = 'virtual/' + process.cwd().replace(/:\\?/, '_/').replace(/\\/g, '/');
+  const virtualSrc = cwdVirtual + '/src/';
+  const virtualNm = cwdVirtual + '/node_modules/';
   if (stripped.startsWith(virtualSrc)) stripped = stripped.slice(virtualSrc.length);
   if (stripped.startsWith(virtualNm)) stripped = 'npm/' + stripped.slice(virtualNm.length);
   return stripped;

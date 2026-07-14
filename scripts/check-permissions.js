@@ -102,10 +102,10 @@ function resolveBaseRef() {
     // Offline / shallow clone — fall back to local tags.
   }
 
-  const tag = execSync(
-    'git tag --sort=-creatordate | grep -E "^v[0-9]+\\.[0-9]+\\.[0-9]+$" | head -n 1',
-    { encoding: 'utf8' },
-  ).trim();
+  const tag = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
+    .split(/\r?\n/)
+    .map((t) => t.trim())
+    .find((t) => /^v\d+\.\d+\.\d+$/.test(t));
 
   if (!tag) {
     throw new Error('Could not determine the last release tag to diff against.');
