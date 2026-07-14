@@ -144,14 +144,28 @@ export const config = {
 
           // Replace extension files with the source
           const extension = readFileSync(`${wdio.FIREFOX_PATH.replace('.zip', '')}-source.zip`);
-          // Must await: otherwise the previous temporary add-on can keep its
-          // webRequest listeners alive (e.g. Sec-GPC) beside the new build.
-          await browser.installAddOn(extension.toString('base64'), true);
+          browser.installAddOn(extension.toString('base64'), true);
 
           await browser.url('about:debugging#/runtime/this-firefox');
 
           await expect($('.extension-backgroundscript__status')).toHaveElementClass(
             expect.stringContaining('extension-backgroundscript__status--running'),
+          );
+
+          // Temporary add-on replacement can leave the previous background
+          // (and its webRequest listeners) alive. Reload forces a single clean
+          // background so settings toggles apply to the listeners that run
+          // after the update (same pattern as utils.reloadExtension).
+          const reloadButton = await $('.qa-temporary-extension-reload-button');
+          await reloadButton.click();
+
+          await expect($('.extension-backgroundscript__status')).toHaveElementClass(
+            expect.stringContaining('extension-backgroundscript__status--stopped'),
+            { wait: 5000 },
+          );
+          await expect($('.extension-backgroundscript__status')).toHaveElementClass(
+            expect.stringContaining('extension-backgroundscript__status--running'),
+            { wait: 10000 },
           );
 
           break;
