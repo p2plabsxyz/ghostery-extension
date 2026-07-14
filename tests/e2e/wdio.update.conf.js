@@ -144,7 +144,9 @@ export const config = {
 
           // Replace extension files with the source
           const extension = readFileSync(`${wdio.FIREFOX_PATH.replace('.zip', '')}-source.zip`);
-          browser.installAddOn(extension.toString('base64'), true);
+          // Must await: otherwise the previous temporary add-on can keep its
+          // webRequest listeners alive (e.g. Sec-GPC) beside the new build.
+          await browser.installAddOn(extension.toString('base64'), true);
 
           await browser.url('about:debugging#/runtime/this-firefox');
 
