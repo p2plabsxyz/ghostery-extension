@@ -102,19 +102,29 @@ function resolveBaseRef() {
     // Offline / shallow clone — fall back to local tags.
   }
 
+  const pkg = JSON.parse(readFileSync(resolve(pwd, 'package.json'), 'utf8'));
+  const pkgMajor = Number(String(pkg.version).split('.')[0]);
+
   const tag = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
     .split(/\r?\n/)
     .map((t) => t.trim())
-    .find((t) => /^v\d+\.\d+\.\d+$/.test(t));
+    .find((t) => {
+      const match = /^v(\d+)\.\d+\.\d+$/.exec(t);
+      // Ignore fork packaging tags (v1.x) that do not match Ghostery's major.
+      return match && Number(match[1]) === pkgMajor;
+    });
 
-  if (!tag) {
-    throw new Error('Could not determine the last release tag to diff against.');
-  }
-
-  return tag;
+  return tag || null;
 }
 
 const base = resolveBaseRef();
+if (!base) {
+  console.log(
+    'No Ghostery upstream release tag found on this remote; skipping permission baseline check.\n',
+  );
+  process.exit(0);
+}
+
 console.log(`Comparing manifest permissions against ${base}\n`);
 
 const problems = [];

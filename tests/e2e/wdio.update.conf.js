@@ -19,6 +19,40 @@ import * as wdio from './wdio.conf.js';
 
 import { setupTestPage } from './page/server.js';
 
+/**
+ * Fork remotes (e.g. p2plabsxyz) may only tag packaging builds like v1.1.0.
+ * Update tests must download a real Ghostery upstream zip, so only accept tags
+ * that match package.json's major version and otherwise use package.json itself.
+ */
+function resolveUpdateVersion() {
+  if (wdio.argv.version) return String(wdio.argv.version);
+
+  const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));
+  const pkgMajor = Number(String(pkg.version).split('.')[0]);
+
+  try {
+    execSync('git fetch --tags --quiet', { stdio: 'ignore' });
+  } catch {
+    // Offline / shallow clone — use whatever tags are already local.
+  }
+
+  try {
+    const tag = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
+      .split(/\r?\n/)
+      .map((t) => t.trim())
+      .find((t) => {
+        const match = /^v(\d+)\.\d+\.\d+$/.exec(t);
+        return match && Number(match[1]) === pkgMajor;
+      });
+    if (tag) return tag.slice(1);
+  } catch {
+    // Continue to the package.json fallback below.
+  }
+
+  // package.json tracks the Ghostery upstream version that has release assets.
+  return pkg.version;
+}
+
 /*
  * This configuration file is used to update the extension in the browser
  * before running the tests. It uses the original configuration file as a base,
@@ -42,20 +76,8 @@ export const config = {
     }
 
     try {
-      let version = wdio.argv.version;
-
-      if (!version) {
-        execSync('git fetch --tags --quiet');
-        // Prefer semver order so fork tags like v1.1.0 do not beat upstream v10.x.
-        const tag = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
-          .split(/\r?\n/)
-          .map((t) => t.trim())
-          .find((t) => /^v\d+\.\d+\.\d+$/.test(t));
-        if (!tag) {
-          throw new Error('Could not determine the last release tag to update from.');
-        }
-        version = tag.slice(1);
-      }
+      const version = resolveUpdateVersion();
+      console.log(`Using Ghostery release v${version} as the update-test baseline`);
 
       for (const capability of capabilities) {
         const url = `https://github.com/ghostery/ghostery-extension/releases/download/v${version}/`;
