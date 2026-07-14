@@ -16,7 +16,7 @@ import { isOpera, isSafari } from '/utils/browser-info.js';
 import { findParentDomain } from '/utils/domains.js';
 
 import CustomFilters from './custom-filters.js';
-import ManagedConfig, { TRUSTED_DOMAINS_NONE_ID } from './managed-config.js';
+import ManagedConfig from './managed-config.js';
 import Notification from './notification.js';
 
 const UPDATE_OPTIONS_ACTION_NAME = 'updateOptions';
@@ -30,20 +30,6 @@ export const ENGINES = [
   { name: 'tracking', key: 'blockTrackers' },
   { name: 'annoyances', key: 'blockAnnoyances' },
 ];
-
-const LOCAL_OPTIONS = [
-  'autoconsent',
-  'terms',
-  'feedback',
-  'onboarding',
-  'panel',
-  'sync',
-  'revision',
-  'filtersUpdatedAt',
-  'fixesFilters',
-  'whatsNewVersion',
-];
-const PROTECTED_OPTIONS = ['exceptions', 'paused', 'zapped'];
 
 const OPTIONS_VERSION = 5;
 
@@ -66,7 +52,11 @@ const Options = {
   customFilters: {
     enabled: false,
     trustedScriptlets: false,
+    filterLists: store.record({ enabled: true, trustedScriptlets: false }),
   },
+
+  // Distractions
+  distractions: store.record(false),
 
   // Experimental features
   autoconsent: { autoAction: 'optOut', gpc: true },
@@ -88,12 +78,13 @@ const Options = {
   pauseAssistant: true,
 
   // Onboarding
-  terms: true,
-  feedback: false,
-  onboarding: true,
+  terms: false,
+  feedback: true,
+  onboarding: false,
 
   // UI
   panel: { statsType: 'graph', notifications: true },
+  contextMenu: true,
   theme: '',
 
   // Tracker exceptions
@@ -160,12 +151,48 @@ const Options = {
   },
 };
 
+// Options that are stored only in the local storage and not synced across devices
+const LOCAL_OPTIONS = [
+  'terms',
+  'feedback',
+  'onboarding',
+  'panel',
+  'sync',
+  'revision',
+  'filtersUpdatedAt',
+  'fixesFilters',
+  'whatsNewVersion',
+];
+
 export const SYNC_OPTIONS = Object.keys(Options).filter((key) => !LOCAL_OPTIONS.includes(key));
 
-export const REPORT_OPTIONS = [
-  ...SYNC_OPTIONS.filter((key) => !PROTECTED_OPTIONS.includes(key)),
-  'filtersUpdatedAt',
-];
+// Protected options may contain sensitive information, so in the
+// broken page reports they are reduced to a simple boolean.
+const PROTECTED_OPTIONS = {
+  customFilters: (value) => value.enabled,
+  exceptions: (value) => Object.keys(value).length > 0,
+  paused: (value) => Object.values(value).some(({ assist }) => !assist),
+  zapped: (value) => Object.keys(value).length > 0,
+};
+
+// Returns options prepared for the broken page report. Protected options, which
+// may contain sensitive information, are reduced to a simple boolean.
+export function getReportOptions(options) {
+  const result = {};
+
+  for (const key of [...SYNC_OPTIONS, 'filtersUpdatedAt']) {
+    const protect = PROTECTED_OPTIONS[key];
+
+    if (protect) {
+      // Only report protected options when they are active
+      if (protect(options[key])) result[key] = true;
+    } else {
+      result[key] = options[key];
+    }
+  }
+
+  return result;
+}
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg.action === UPDATE_OPTIONS_ACTION_NAME) {
@@ -250,6 +277,7 @@ async function manage(options) {
 
   if (managed.disableUserControl === true) {
     options.sync = false;
+    options.contextMenu = false;
 
     // Clear out the paused state, to overwrite with the current managed state
     options.paused = {};
@@ -274,16 +302,20 @@ async function manage(options) {
   }
 
   // Apply trusted domains if they are configured
-  // (`trustedDomains` is empty or contain real domains)
-  if (managed.trustedDomains[0] !== TRUSTED_DOMAINS_NONE_ID) {
+  if (managed.trustedDomains.enabled) {
     options.paused ||= {};
-    managed.trustedDomains.forEach((domain) => {
+    managed.trustedDomains.domains.forEach((domain) => {
       options.paused[domain] = { revokeAt: 0, managed: true };
     });
   }
 
   if (managed.customFilters.enabled) {
-    options.customFilters = { enabled: true, trustedScriptlets: true };
+    options.customFilters = {
+      enabled: true,
+      trustedScriptlets: true,
+      // Only filters from the managed storage are allowed
+      filterLists: {},
+    };
   }
 
   return options;
@@ -299,7 +331,7 @@ export async function revokeGlobalPause(options) {
 
 export function getPausedDetails(options, hostname) {
   if (!hostname) {
-    throw new Error('Hostname is required to get paused details');
+    return null;
   }
 
   if (isGloballyPaused(options)) {

@@ -11,7 +11,7 @@
 
 import { html, store, router, msg } from 'hybrids';
 
-import { getCurrentTab, openTabWithUrl } from '/utils/tabs.js';
+import { getCurrentTab, openHref } from '/utils/tabs.js';
 
 import Options, {
   isGloballyPaused,
@@ -42,7 +42,7 @@ import TrackersReport from './trackers-report.js';
 import WhoTracksMe from './whotracksme.js';
 import { findParentDomain } from '/utils/domains.js';
 import { ZAP_AUTORELOAD_DISABLED_HOSTNAMES } from '/utils/urls.js';
-import { lang } from '/ui/labels.js';
+import { lang, numberFormatter } from '/ui/labels.js';
 
 const PANEL_URL = chrome.runtime.getURL('/pages/panel/index.html');
 const SETTINGS_URL = chrome.runtime.getURL('/pages/settings/index.html#@settings-privacy');
@@ -223,7 +223,7 @@ export default {
             ${options.mode === MODE_DEFAULT &&
             html`<ui-icon name="logo" slot="icon" layout="size:2.5"></ui-icon>`}
             ${options.mode === MODE_ZAP &&
-            html`<ui-icon name="logo-zap" slot="icon" layout="margin:left:-1"></ui-icon>`}
+            html`<ui-icon name="logo-zap" slot="icon" layout="margin:left:-1 width:7"></ui-icon>`}
             ${!managedConfig.disableUserControl &&
             html`
               <ui-action slot="actions">
@@ -272,7 +272,7 @@ export default {
               </panel-actions-button>
               <panel-actions-button>
                 <a
-                  onclick="${openTabWithUrl}"
+                  onclick="${openHref}"
                   href="${chrome.runtime.getURL(
                     '/pages/settings/index.html#@settings-website-details?domain=' + stats.hostname,
                   )}"
@@ -290,7 +290,7 @@ export default {
         html`
           <div layout="::background:danger-primary">
             <ui-button type="danger" layout="height:6 margin:1.5" data-qa="button:enable">
-              <a href="${ONBOARDING_URL}" layout="row center gap:0.5" onclick="${openTabWithUrl}">
+              <a href="${ONBOARDING_URL}" layout="row center gap:0.5" onclick="${openHref}">
                 <ui-icon name="play"></ui-icon>
                 Enable Ghostery
               </a>
@@ -422,7 +422,9 @@ export default {
                                       <span slot="content"> View activity details </span>
                                       <ui-tracker-name> ${tracker.name} </ui-tracker-name>
                                     </ui-tooltip>
-                                    <ui-stats-badge> ${tracker.requestsCount} </ui-stats-badge>
+                                    <ui-stats-badge>
+                                      ${numberFormatter.format(tracker.requestsCount)}
+                                    </ui-stats-badge>
                                     ${tracker.blocked &&
                                     html`<ui-icon
                                       name="block-s"
@@ -472,7 +474,7 @@ export default {
                     <panel-feedback-button
                       type="blocked"
                       icon="block-s"
-                      value="${stats.trackersBlocked}"
+                      value="${numberFormatter.format(stats.trackersBlocked)}"
                       href="${router.url(TrackersReport, { type: 'blocked' })}"
                     >
                       Trackers blocked
@@ -483,7 +485,7 @@ export default {
                     <panel-feedback-button
                       type="modified"
                       icon="eye"
-                      value="${stats.trackersModified}"
+                      value="${numberFormatter.format(stats.trackersModified)}"
                       href="${router.url(TrackersReport, { type: 'modified' })}"
                     >
                       Trackers modified
@@ -529,7 +531,7 @@ export default {
               class="${{
                 last: managedConfig.disableUserControl || !store.ready(notification),
               }}"
-              onclick="${openTabWithUrl}"
+              onclick="${openHref}"
               layout="block margin:1.5:1.5:0.5"
               layout.last="margin:bottom:1.5"
             >

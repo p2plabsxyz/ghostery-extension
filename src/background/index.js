@@ -9,17 +9,27 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0
  */
 
+import { bootstrapEmbedded, isEmbeddedHost } from './peersky-bootstrap.js';
+
+if (__CHROMIUM__ && isEmbeddedHost()) {
+  bootstrapEmbedded();
+}
+
+import '/ui/localize.js';
+
 import './onboarding.js';
 import './config.js';
 
 import './adblocker/index.js';
 import './never-consent/index.js';
 import './cookies.js';
-import './custom-filters.js';
+import './custom-filters/index.js';
+import './distractions.js';
 import './element-picker.js';
 import './dnr.js';
 import './redirect-protection.js';
 import './exceptions.js';
+import './context-menu.js';
 import './paused.js';
 import './zapped.js';
 import './stats.js';

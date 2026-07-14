@@ -15,6 +15,8 @@ import { FLAG_SUBFRAME_SCRIPTING } from '@ghostery/config';
 
 import { resolveFlag } from '/store/config.js';
 import Options, { getPausedDetails } from '/store/options.js';
+import DisabledFilters from '/store/disabled-filters.js';
+import FilteringDebug from '/store/filtering-debug.js';
 
 import * as engines from '/utils/engines.js';
 import * as OptionsObserver from '/utils/options-observer.js';
@@ -46,8 +48,42 @@ const scriptletGlobals = {
   warOrigin: chrome.runtime.getURL('/rule_resources/redirects/empty').slice(0, -6),
 };
 
-function injectScriptlets(filters, hostname, details) {
-  let contentScript = '';
+// On Chromium both webNavigation.onCommitted and webRequest.onResponseStarted fire for the
+// same document, so scriptlets would run twice. We remember the documentIds we have already
+// injected into (proved by executeScript's result) and skip a repeat. The in-memory set gives
+// a synchronous check that closes the race between the two triggers; session storage keeps it
+// across service-worker restarts.
+const INJECTED_DOCUMENTS_KEY = 'injectedScriptletDocuments';
+const injectedDocuments = new Set();
+
+if (__CHROMIUM__) {
+  chrome.storage.session
+    .get(INJECTED_DOCUMENTS_KEY)
+    .then((stored) => {
+      for (const id of stored[INJECTED_DOCUMENTS_KEY] || []) injectedDocuments.add(id);
+    })
+    .catch(() => {});
+}
+
+function rememberInjectedDocument(documentId) {
+  injectedDocuments.add(documentId);
+  if (injectedDocuments.size > 1000) {
+    injectedDocuments.delete(injectedDocuments.values().next().value);
+  }
+  chrome.storage.session.set({ [INJECTED_DOCUMENTS_KEY]: [...injectedDocuments] }).catch(() => {});
+}
+
+async function injectScriptlets(filters, hostname, details) {
+  if (__CHROMIUM__) {
+    if (filters.length === 0) return;
+    if (details.documentId) {
+      if (injectedDocuments.has(details.documentId)) return;
+      injectedDocuments.add(details.documentId);
+    }
+  }
+
+  const scriptletsByWorld = { MAIN: '', ISOLATED: '' };
+  const injections = [];
   for (const filter of filters) {
     const parsed = filter.parseScript();
 
@@ -66,39 +102,51 @@ function injectScriptlets(filters, hostname, details) {
 
     const func = scriptlet.func;
     const args = [scriptletGlobals, ...parsed.args.map((arg) => decodeURIComponent(arg))];
+    const declaredWorld = scriptlet.world === 'ISOLATED' ? 'ISOLATED' : 'MAIN';
 
-    if (__FIREFOX__) {
-      if (filter.hasSubframeConstraint()) {
-        contentScript += `window.parent!==window&&`;
-      }
-      contentScript += `(${func.toString()})(...${JSON.stringify(args)});\n`;
+    // Firefox registers direct-domain scriptlets (document_start); a per-hostname registration
+    // can't reach a cross-origin child, so subframe-constrained ones inject per-frame below.
+    if (__FIREFOX__ && !filter.hasSubframeConstraint()) {
+      scriptletsByWorld[declaredWorld] += `(${func.toString()})(...${JSON.stringify(args)});\n`;
       continue;
     }
 
-    chrome.scripting.executeScript(
-      {
-        injectImmediately: true,
-        world: chrome.scripting.ExecutionWorld?.MAIN ?? (__FIREFOX__ ? undefined : 'MAIN'),
-        target: resolveInjectionTarget(details),
-        func,
-        args,
-      },
-      () => {
-        if (chrome.runtime.lastError) {
-          console.warn(chrome.runtime.lastError);
-        }
-      },
+    injections.push(
+      chrome.scripting
+        .executeScript({
+          injectImmediately: true,
+          world: declaredWorld,
+          target: resolveInjectionTarget(details),
+          func,
+          args,
+        })
+        .catch((e) => {
+          console.warn(e);
+          return null;
+        }),
     );
   }
 
   if (__FIREFOX__) {
-    if (filters.length === 0) {
-      contentScripts.unregister(hostname);
-    } else if (!contentScripts.isRegistered(hostname)) {
-      contentScripts.register(hostname, contentScript);
+    if (scriptletsByWorld.MAIN || scriptletsByWorld.ISOLATED) {
+      if (!contentScripts.isRegistered(hostname)) {
+        contentScripts.register(hostname, scriptletsByWorld);
+      }
     } else {
-      // do nothing if already registered
+      contentScripts.unregister(hostname);
     }
+    return;
+  }
+
+  // The documentId echoed back by executeScript proves the injection landed; persist it so
+  // the dedup outlives a service-worker restart. If nothing landed, release the reservation.
+  const results = await Promise.all(injections);
+  const injectedDocumentId = results.flat().find((result) => result?.documentId)?.documentId;
+
+  if (injectedDocumentId) {
+    rememberInjectedDocument(injectedDocumentId);
+  } else if (details.documentId) {
+    injectedDocuments.delete(details.documentId);
   }
 }
 
@@ -134,13 +182,9 @@ function injectStyles(styles, details) {
 
 const SUBFRAME_SCRIPTING = resolveFlag(FLAG_SUBFRAME_SCRIPTING);
 
-let framesHierarchy;
-if (__CHROMIUM__) {
-  framesHierarchy = new FramesHierarchy();
-
-  framesHierarchy.handleWebWorkerStart();
-  framesHierarchy.handleWebextensionEvents();
-}
+const framesHierarchy = new FramesHierarchy();
+framesHierarchy.handleWebWorkerStart();
+framesHierarchy.handleWebextensionEvents();
 
 /*
  * returns `false` if the injection should be blocked for the given hostname
@@ -181,22 +225,18 @@ async function injectCosmetics(details, config) {
 
   const engine = engines.get(engines.MAIN_ENGINE);
 
+  const debug = store.get(FilteringDebug);
+  const debugReady = store.ready(debug);
+  const cssEnabled = !debugReady || debug.cosmeticsCSS;
+  const scriptletsEnabled = !debugReady || debug.cosmeticsScriptlets;
+  const extendedCSSEnabled = !debugReady || debug.cosmeticsExtendedCSS;
+
   let ancestors = undefined;
-  if (SUBFRAME_SCRIPTING.enabled && typeof parentFrameId === 'number') {
-    if (__FIREFOX__) {
-      // On Firefox with content scripts API, we need to collect
-      // every scriptlets will potentially run on the hostname.
-      // Putting same values to `ancestors` enables adblocker to
-      // find all possible cases. The subframe constraint is
-      // validated by the `window.parent` property upon a script
-      // is executed.
-      ancestors = [{ domain, hostname }];
-    } else {
-      ancestors = framesHierarchy.ancestors(
-        { tabId, frameId, parentFrameId, documentId },
-        { domain, hostname },
-      );
-    }
+  if (!scriptletsOnly && SUBFRAME_SCRIPTING.enabled && typeof parentFrameId === 'number') {
+    ancestors = framesHierarchy.ancestors(
+      { tabId, frameId, parentFrameId, documentId },
+      { domain, hostname },
+    );
   }
 
   // Domain specific cosmetic filters (scriptlets and styles)
@@ -227,18 +267,21 @@ async function injectCosmetics(details, config) {
     const styleFilters = [];
     const scriptFilters = [];
 
+    const disabledFilters = store.get(DisabledFilters);
+
     for (const { filter, exception } of matches) {
-      if (exception === undefined) {
-        if (filter.isScriptInject()) {
-          scriptFilters.push(filter);
-        } else {
-          styleFilters.push(filter);
-        }
+      if (exception !== undefined) continue;
+      if (store.ready(disabledFilters) && disabledFilters.ids[filter.getId()]) continue;
+
+      if (filter.isScriptInject()) {
+        scriptFilters.push(filter);
+      } else {
+        styleFilters.push(filter);
       }
     }
 
     if (isBootstrap) {
-      injectScriptlets(scriptFilters, hostname, details);
+      injectScriptlets(scriptletsEnabled ? scriptFilters : [], hostname, details);
     }
 
     if (scriptletsOnly) {
@@ -254,11 +297,11 @@ async function injectCosmetics(details, config) {
       getBaseRules: false,
     });
 
-    if (styles) {
+    if (styles && cssEnabled) {
       injectStyles(styles, details);
     }
 
-    if (extended && extended.length > 0) {
+    if (extended && extended.length > 0 && extendedCSSEnabled) {
       chrome.tabs
         .sendMessage(tabId, { action: 'evaluateExtendedSelectors', extended }, { frameId })
         // In case the frame is destroyed before the message is delivered, we can get an error
@@ -268,7 +311,7 @@ async function injectCosmetics(details, config) {
 
   // Global cosmetic filters (styles only)
   // Execution: bootstrap
-  if (isBootstrap) {
+  if (isBootstrap && cssEnabled) {
     const { styles } = engine.getCosmeticsFilters({
       domain,
       hostname,

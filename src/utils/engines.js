@@ -19,9 +19,11 @@ import {
   Resources,
   evaluatePreprocessor,
 } from '@ghostery/adblocker';
+import { xxh32d64 } from 'minixxh/xxh32d64';
 
 import ResourcesModel from '/store/resources.js';
 
+import { ENV } from './preprocessors.js';
 import { registerDatabase } from './indexeddb.js';
 import { CDN_URL } from './urls.js';
 
@@ -32,27 +34,18 @@ export const ELEMENT_PICKER_ENGINE = 'element-picker-selectors';
 export const CUSTOM_ENGINE = 'custom-filters';
 
 export const TRACKERDB_ENGINE = 'trackerdb';
+export const DISTRACTIONS_ENGINE = 'distractions';
 
 const engines = new Map();
-
-export const ENV = new Map([
-  ['ext_ghostery', true],
-  ['ext_ublock', true],
-  ['ext_ubol', checkUserAgent('Firefox')],
-  ['cap_html_filtering', checkUserAgent('Firefox')],
-  // TODO: Can be removed once $replace support is sufficiently distributed
-  ['cap_replace_modifier', checkUserAgent('Firefox')],
-  ['cap_user_stylesheet', true],
-  ['env_firefox', checkUserAgent('Firefox')],
-  ['env_chromium', checkUserAgent('Chrome')],
-  ['env_edge', checkUserAgent('Edg')],
-  ['env_mobile', checkUserAgent('Mobile')],
-  // TODO: Can be removed after clean up of the experimental filters is sufficiently distributed
-  ['env_experimental', false],
-]);
+const saveListeners = new Map();
 
 export function isPersistentEngine(name) {
-  return name !== ELEMENT_PICKER_ENGINE && name !== CUSTOM_ENGINE && name !== MAIN_ENGINE;
+  return (
+    name !== ELEMENT_PICKER_ENGINE &&
+    name !== CUSTOM_ENGINE &&
+    name !== DISTRACTIONS_ENGINE &&
+    name !== MAIN_ENGINE
+  );
 }
 
 export function setEnv(key, value) {
@@ -65,10 +58,6 @@ export function setEnv(key, value) {
   } else {
     throw Error(`Unknown environment variable: ${key}`);
   }
-}
-
-function checkUserAgent(pattern) {
-  return navigator.userAgent.indexOf(pattern) !== -1;
 }
 
 function deserializeEngine(engineBytes) {
@@ -88,6 +77,23 @@ function loadFromMemory(name) {
 
 function saveToMemory(name, engine) {
   engines.set(name, engine);
+
+  const listeners = saveListeners.get(name);
+  if (listeners) {
+    for (const callback of listeners) callback(engine);
+  }
+}
+
+// The in-memory engine instance is replaced (not mutated) on reload, so holders must re-bind.
+export function addSaveListener(name, callback) {
+  let listeners = saveListeners.get(name);
+  if (!listeners) {
+    listeners = new Set();
+    saveListeners.set(name, listeners);
+  }
+  listeners.add(callback);
+
+  return () => listeners.delete(callback);
 }
 
 const DB_NAME = registerDatabase('engines');
@@ -134,7 +140,7 @@ async function loadFromStorage(name) {
         // https://github.com/ghostery/ghostery-extension/pull/1928
         // The above PR introduced full engines to all platforms,
         // so the old engines are obsolete and should be reloaded
-        throw TypeError(`Engine "${name}" is obsolete and must be reloaded`);
+        throw TypeError(`[engines] Engine "${name}" is obsolete and must be reloaded`);
       }
 
       saveToMemory(name, engine);
@@ -189,9 +195,10 @@ async function saveToStorage(name, checksum) {
 }
 
 async function loadFromCDN(name) {
-  console.log(`[engines] Loading engine "${name}" from CDN...`);
+  console.info(`[engines] Loading engine "${name}" from CDN...`);
   await update(name, { force: true });
-  return await loadFromStorage(name);
+
+  return loadFromMemory(name);
 }
 
 function check(response) {
@@ -218,7 +225,7 @@ export async function update(name, { force = false, cache = true } = {}) {
     const urlName = name === 'trackerdb' ? 'trackerdbMv3' : `dnr-${name}-v2`;
     const listURL = CDN_URL + `adblocker/configs/${urlName}/allowed-lists.json`;
 
-    console.info(`[engines] Updating engine "${name}"...`);
+    if (!force) console.info(`[engines] Updating engine "${name}"...`);
 
     const data = await fetch(listURL, {
       cache: cache ? 'default' : 'no-store',
@@ -282,7 +289,7 @@ export async function update(name, { force = false, cache = true } = {}) {
       saveToMemory(name, engine);
       saveToStorage(name, data.engines[ENGINE_VERSION].checksum);
 
-      console.info(`Engine "${name}" reloaded:`, data.engines[ENGINE_VERSION].checksum);
+      console.info(`[engines] Engine "${name}" reloaded:`, data.engines[ENGINE_VERSION].checksum);
 
       return true;
     }
@@ -410,12 +417,18 @@ export async function init(name) {
 export async function create(name, options = null) {
   const baseEngine = await init(FIXES_ENGINE);
 
-  options = {
-    ...options,
-    config: baseEngine.config,
-  };
+  const { lists, ...rest } = options || {};
 
-  const engine = new FiltersEngine({ ...options });
+  const engine = new FiltersEngine({
+    ...rest,
+    config: baseEngine.config,
+  });
+
+  if (lists) {
+    for (const [key, value] of Object.entries(lists)) {
+      engine.lists.set(key, value);
+    }
+  }
 
   engine.resources = Resources.copy(baseEngine.resources);
   engine.updateEnv(ENV);
@@ -435,7 +448,8 @@ export function replace(name, engineOrEngines) {
   if (engines.length > 1) {
     engine = FiltersEngine.merge(engines, {
       skipResources: true,
-      overrideConfig: { enableCompression: false },
+      useBinaryMerge: true,
+      hashFunc: xxh32d64,
     });
     engine.resources = Resources.copy(engines[0].resources);
   } else {

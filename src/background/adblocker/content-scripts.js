@@ -12,23 +12,31 @@
 export const contentScripts = (() => {
   const map = new Map();
   return {
-    async register(hostname, code) {
+    async register(hostname, scriptletsByWorld) {
       this.unregister(hostname);
+
+      // Reserve synchronously so a concurrent onCommitted register() short-circuits on
+      // isRegistered() instead of registering the hostname again and injecting twice.
+      const registered = [];
+      map.set(hostname, registered);
+
       try {
-        const contentScript = await browser.contentScripts.register({
-          js: [
-            {
-              code,
-            },
-          ],
-          allFrames: true,
-          matches: [`https://*.${hostname}/*`, `http://*.${hostname}/*`],
-          matchAboutBlank: true,
-          matchOriginAsFallback: true,
-          runAt: 'document_start',
-          world: 'MAIN',
-        });
-        map.set(hostname, contentScript);
+        for (const [world, code] of Object.entries(scriptletsByWorld)) {
+          if (!code) continue;
+
+          registered.push(
+            await browser.contentScripts.register({
+              js: [{ code }],
+              allFrames: true,
+              // Subdomain frames register their own scriptlets, so match only this exact hostname.
+              matches: [`https://${hostname}/*`, `http://${hostname}/*`],
+              matchAboutBlank: true,
+              matchOriginAsFallback: true,
+              runAt: 'document_start',
+              world,
+            }),
+          );
+        }
       } catch (e) {
         console.warn(e);
         this.unregister(hostname);
@@ -38,11 +46,10 @@ export const contentScripts = (() => {
       return map.has(hostname);
     },
     unregister(hostname) {
-      const contentScript = map.get(hostname);
-      if (contentScript) {
+      for (const contentScript of map.get(hostname) ?? []) {
         contentScript.unregister();
-        map.delete(hostname);
       }
+      map.delete(hostname);
     },
     unregisterAll() {
       for (const hostname of map.keys()) {

@@ -25,11 +25,6 @@ node ./scripts/data-dependencies.js
 # Update xcode version
 node ./scripts/xcode-version.js
 
-# Compile, push and pull new translations
-npm run locales
-tx push
-tx pull -f
-
 # Get version from package.json
 version=$(node -p "require('./package.json').version")
 # Get build number from xcode
@@ -38,6 +33,21 @@ buildVersion=$(cat ./xcode/Ghostery.xcodeproj/project.pbxproj | sed -n -e 's/^.*
 # Commit changes
 git add .
 git commit -m "Release v$version-$buildVersion"
+
+# Push the release branch
+git push -u origin release --force
+
+# Build PR description from commits since the last version tag (excluding this branch's commit)
+lastTag=$(git describe --tags --abbrev=0 --match "v*" origin/main)
+prBody=$(git log --oneline "$lastTag"..origin/main)
+
+# Create or update the PR
+prNumber=$(gh pr list --head release --state open --json number --jq '.[0].number')
+if [ -n "$prNumber" ]; then
+  gh pr edit "$prNumber" --title "Release v$version" --body "$prBody"
+else
+  gh pr create --base main --head release --title "Release v$version" --body "$prBody" --label "package" --reviewer "AdamGhst"
+fi
 
 # Open Xcode
 xed xcode

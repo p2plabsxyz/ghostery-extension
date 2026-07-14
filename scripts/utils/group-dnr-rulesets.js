@@ -13,6 +13,9 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 
 const DOMAIN_BLOCKING_PATTERN = /^\|\|(?:[a-zA-Z0-9-]+\.)+[a-zA-Z]{2,}\^$/;
 
+/** Chrome declarativeNetRequest limit per rule condition. */
+const MAX_REQUEST_DOMAINS_PER_RULE = 1000;
+
 function cutPuncBy100(n) {
   return Math.trunc(n * 100) / 100;
 }
@@ -41,17 +44,21 @@ function groupRuleset(ruleset, metadata) {
 
   // Empty `requestDomains` is not allowed by the format.
   if (hostnames.size > 0) {
-    result.push({
-      // The rule id starts with 1, we top up 2
-      id: ruleset.length + 2,
-      priority: 1,
-      action: {
-        type: 'block',
-      },
-      condition: {
-        requestDomains: Array.from(hostnames),
-      },
-    });
+    const domains = Array.from(hostnames);
+    let nextId = ruleset.length + 2;
+
+    for (let offset = 0; offset < domains.length; offset += MAX_REQUEST_DOMAINS_PER_RULE) {
+      result.push({
+        id: nextId++,
+        priority: 1,
+        action: {
+          type: 'block',
+        },
+        condition: {
+          requestDomains: domains.slice(offset, offset + MAX_REQUEST_DOMAINS_PER_RULE),
+        },
+      });
+    }
   }
 
   return result;

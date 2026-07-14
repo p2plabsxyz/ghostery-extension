@@ -24,6 +24,13 @@ import { readFileSync, cpSync, existsSync, rmSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { $, $$ } from '@wdio/globals';
 
+// Pin geckodriver to 0.36.0 — when installing an extension via base64
+// (installAddOn API), the file is removed from the filesystem after install,
+// causing issues like broken extension reload and content scripts not loading.
+// v0.37.0 made this worse; 0.36.0 is the last known good version.
+// TODO: check https://github.com/mozilla/geckodriver/issues/2248 and remove the pin once fixed.
+process.env.GECKODRIVER_VERSION = '0.36.0';
+
 import { setupTestPage } from './page/server.js';
 
 import { getExtensionPageURL, setExtensionBaseUrl, PAGE_PORT, PAGE_URL } from './utils.js';
@@ -31,6 +38,11 @@ import { getExtensionPageURL, setExtensionBaseUrl, PAGE_PORT, PAGE_URL } from '.
 export const WEB_EXT_PATH = path.join(process.cwd(), 'web-ext-artifacts');
 export const FIREFOX_PATH = path.join(WEB_EXT_PATH, 'ghostery-firefox.zip');
 export const CHROME_PATH = path.join(WEB_EXT_PATH, 'ghostery-chromium');
+
+// Stable UUID assigned to the Firefox extension via the
+// `extensions.webextensions.uuids` pref. Lets us build the
+// moz-extension:// base URL without navigating to about:debugging.
+const FIREFOX_EXTENSION_UUID = 'd75e6a3a-1e3a-4d6f-9b3e-7a2d4f8c9e10';
 
 // Generate arguments from command line
 export const argv = process.argv.slice(2).reduce(
@@ -90,6 +102,8 @@ export const config = {
     [
       'spec/exceptions.spec.js',
       'spec/custom-filters.spec.js',
+      'spec/scriptlet-idempotency.spec.js',
+      'spec/subframe-scripting.spec.js',
       'spec/redirect-protection.spec.js',
       'spec/clear-cookies.spec.js',
       'spec/panel.spec.js',
@@ -117,6 +131,13 @@ export const config = {
           'browser.cache.offline.enable': false,
           'network.http.use-cache': false,
           'intl.accept_languages': 'en-GB',
+          // Pre-assign a stable internal UUID to the extension so we can
+          // construct the moz-extension:// base URL without having to scrape
+          // about:debugging (a parent-process page where WebDriver BiDi
+          // disallows script.callFunction since Firefox 138+).
+          'extensions.webextensions.uuids': JSON.stringify({
+            'firefox@ghostery.com': FIREFOX_EXTENSION_UUID,
+          }),
         },
       },
     },
@@ -165,15 +186,11 @@ export const config = {
         const extension = readFileSync(FIREFOX_PATH);
         await browser.installAddOn(extension.toString('base64'), true);
 
-        // Get the extension ID from extensions settings page
-        await browser.url('about:debugging#/runtime/this-firefox');
-
-        const url = (await $('>>>a.qa-manifest-url').getProperty('href')).replace(
-          'manifest.json',
-          'pages',
-        );
-
-        setExtensionBaseUrl(url);
+        // The UUID is preset via the `extensions.webextensions.uuids` pref
+        // (see capabilities above), so we can build the base URL directly
+        // and avoid touching about:debugging (parent-process page, where
+        // WebDriver BiDi script.callFunction is no longer supported).
+        setExtensionBaseUrl(`moz-extension://${FIREFOX_EXTENSION_UUID}/pages`);
       }
 
       // Disable cache for Chrome to avoid caching issues

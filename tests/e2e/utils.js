@@ -107,6 +107,18 @@ export async function reloadExtension() {
   await waitForIdleBackgroundTasks();
 }
 
+// Custom filter updates reach the engine asynchronously; reload PAGE_URL until `check` passes.
+export function reloadUntilActive(check, timeoutMsg = 'scriptlet never became active') {
+  return browser.waitUntil(
+    async () => {
+      await browser.url(PAGE_URL);
+      await browser.pause(300);
+      return check();
+    },
+    { timeout: 20000, interval: 500, timeoutMsg },
+  );
+}
+
 export async function setToggle(name, value) {
   const toggle = await getExtensionElement(`toggle:${name}`);
 
@@ -171,9 +183,16 @@ export async function setCustomFilters(filters) {
   await input.setValue(filters.join('\n'));
 
   await getExtensionElement('button:custom-filters:save').click();
-  await waitForIdleBackgroundTasks();
 
-  await expect(getExtensionElement('component:custom-filters:result')).toBeDisplayed();
+  // The save button label is updated with a success message only after the
+  // background round-trip completes (rebuilding the custom engine and reloading
+  // the main engine). Waiting for it ensures the filters are applied before the
+  // test navigates, otherwise cosmetic/scriptlet injection may run too early.
+  await expect(getExtensionElement('button:custom-filters:save')).toHaveText(
+    'Filter rules have been updated',
+  );
+
+  await waitForIdleBackgroundTasks();
 }
 
 export async function disableCustomFilters() {
@@ -301,4 +320,28 @@ export async function enableExtension() {
   await dismissNotifications();
 
   enableExtension.done = true;
+}
+
+// Loads a third-party `<script>` from the page context and reports whether
+// the request was blocked (onerror) or fetched successfully (onload).
+export async function loadThirdPartyScript(src) {
+  return await browser.execute((src) => {
+    return new Promise((resolve) => {
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = () => {
+        script.remove();
+        resolve('loaded');
+      };
+      script.onerror = () => {
+        script.remove();
+        resolve('blocked');
+      };
+      setTimeout(() => {
+        script.remove();
+        resolve('timeout');
+      }, 5000);
+      document.head.appendChild(script);
+    });
+  }, src);
 }

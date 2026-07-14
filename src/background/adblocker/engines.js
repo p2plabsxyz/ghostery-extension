@@ -20,25 +20,30 @@ import * as OptionsObserver from '/utils/options-observer.js';
 import asyncSetup from '/utils/setup.js';
 
 import { updateDNRRulesForExceptions } from '../exceptions.js';
+import { updateFilterLists } from '../custom-filters/index.js';
 
 import { contentScripts } from './content-scripts.js';
 
-function getEnabledEngines(config) {
-  if (config.terms) {
-    const list = ENGINES.filter(({ key }) => config[key]).map(({ name }) => name);
+function getEnabledEngines(options) {
+  if (options.terms) {
+    const list = ENGINES.filter(({ key }) => options[key]).map(({ name }) => name);
 
-    if (config.regionalFilters.enabled) {
-      list.push(...config.regionalFilters.regions.map((id) => `lang-${id}`));
+    if (options.regionalFilters.enabled) {
+      list.push(...options.regionalFilters.regions.map((id) => `lang-${id}`));
     }
 
-    if (config.fixesFilters && list.length) {
+    if (options.fixesFilters && list.length) {
       list.push(engines.FIXES_ENGINE);
     }
 
     list.push(engines.ELEMENT_PICKER_ENGINE);
 
-    if (config.customFilters.enabled) {
+    if (options.customFilters.enabled) {
       list.push(engines.CUSTOM_ENGINE);
+    }
+
+    if (Object.values(options.distractions).some(Boolean)) {
+      list.push(engines.DISTRACTIONS_ENGINE);
     }
 
     return list;
@@ -120,6 +125,15 @@ export async function updateEngines({ cache = true } = {}) {
         // We need to reload DNR rules for exceptions if TrackerDB engine is updated,
         // as rules rely on TrackerDB metadata
         await updateDNRRulesForExceptions();
+      }
+
+      // Refresh custom filters remote lists - if any of the lists have changed,
+      // the custom engine is rebuilt, so the main engine is reloaded below.
+      // The user-triggered update ("Update now") forces a refresh of all lists.
+      try {
+        updated = (await updateFilterLists({ cache })) || updated;
+      } catch (e) {
+        console.error('[adblocker] Failed to refresh custom filters remote lists', e);
       }
 
       // Update timestamp after the engines are updated

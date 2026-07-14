@@ -11,8 +11,9 @@
 
 import { store } from 'hybrids';
 
-import { ENGINES, isGloballyPaused } from '/store/options.js';
+import Options, { ENGINES, isGloballyPaused } from '/store/options.js';
 import Resources from '/store/resources.js';
+import FilteringDebug from '/store/filtering-debug.js';
 
 import { FIXES_ID_RANGE, getDynamicRulesIds } from '/utils/dnr.js';
 import * as OptionsObserver from '/utils/options-observer.js';
@@ -22,6 +23,7 @@ import { isFilterConditionAccepted } from '/utils/engines.js';
 import { UPDATE_ENGINES_DELAY } from './adblocker/engines.js';
 import { updateRedirectProtectionRules } from './redirect-protection.js';
 import { captureException } from '/utils/errors.js';
+import { isEmbeddedHost } from './peersky-bootstrap.js';
 
 if (__CHROMIUM__) {
   const DNR_RESOURCES = chrome.runtime
@@ -66,12 +68,25 @@ if (__CHROMIUM__) {
     });
 
     console.info(
-      `[dnr] Disabled rules in static ruleset: ${rulesetId}: ${JSON.stringify(disableRuleIds)}`,
+      `[dnr] Disabled rules in "${rulesetId}" by preprocessor: ${disableRuleIds.length}`,
     );
   }
 
   function getIds(options) {
-    if (!options.terms || isGloballyPaused(options)) return [];
+    if (!options.terms && isEmbeddedHost() && options.terms !== false) {
+      options = {
+        ...options,
+        terms: true,
+        blockAds: options.blockAds ?? true,
+        blockTrackers: options.blockTrackers ?? true,
+        blockAnnoyances: options.blockAnnoyances ?? true,
+      };
+    }
+
+    const debug = store.get(FilteringDebug);
+    const networkDisabled = store.ready(debug) && !debug.network;
+
+    if (!options.terms || isGloballyPaused(options) || networkDisabled) return [];
 
     const ids = ENGINES.reduce((acc, { name, key }) => {
       if (options[key] && DNR_RESOURCES.includes(name)) acc.push(name);
@@ -98,28 +113,63 @@ if (__CHROMIUM__) {
     return ids;
   }
 
+  async function updateStaticRulesets(nextRulesetIds) {
+    const currentRulesetIds = await chrome.declarativeNetRequest.getEnabledRulesets();
+
+    const enableRulesetIds = [];
+    for (const id of nextRulesetIds) {
+      if (!currentRulesetIds.includes(id)) enableRulesetIds.push(id);
+    }
+
+    const disableRulesetIds = [];
+    for (const id of currentRulesetIds) {
+      if (!nextRulesetIds.includes(id)) disableRulesetIds.push(id);
+    }
+
+    if (!enableRulesetIds.length && !disableRulesetIds.length) return;
+
+    try {
+      await chrome.declarativeNetRequest.updateEnabledRulesets({
+        enableRulesetIds,
+        disableRulesetIds,
+      });
+
+      console.info(
+        '[dnr] Updated static rulesets:',
+        nextRulesetIds.length ? nextRulesetIds.join(', ') : 'none',
+      );
+
+      if (enableRulesetIds.length > 0) {
+        await Promise.all(enableRulesetIds.map((id) => disableExcludedRulesByPreprocessor(id)));
+      }
+    } catch (e) {
+      console.error(`[dnr] Error while updating static rulesets:`, e);
+      captureException(e, { critical: true, once: true });
+    }
+  }
+
   // Ensure that DNR rulesets are equal to those from options.
   // eg. when web extension updates, the rulesets are reset
   // to the value from the manifest.
-  OptionsObserver.addListener(async function dnr(options, lastOptions) {
-    const ids = getIds(options);
+  async function syncDNR(options, lastOptions) {
+    const nextRulesetIds = getIds(options);
 
     if (
       lastOptions &&
       lastOptions.filtersUpdatedAt === options.filtersUpdatedAt &&
       lastOptions.fixesFilters === options.fixesFilters &&
-      String(ids) === String(getIds(lastOptions))
+      String(nextRulesetIds) === String(getIds(lastOptions))
     ) {
       // No changes in options triggering an update, skip updating rules
       return;
     }
 
-    const enabledRulesetIds = (await chrome.declarativeNetRequest.getEnabledRulesets()) || [];
+    await updateStaticRulesets(nextRulesetIds);
 
     // Add latest fixes rules
     const resources = await store.resolve(Resources);
 
-    if (options.fixesFilters && ids.length) {
+    if (options.fixesFilters && nextRulesetIds.length) {
       if (
         !resources.checksums[DNR_FIXES_KEY] ||
         lastOptions?.filtersUpdatedAt < options.filtersUpdatedAt
@@ -127,8 +177,6 @@ if (__CHROMIUM__) {
         const removeRuleIds = await getDynamicRulesIds(FIXES_ID_RANGE);
 
         try {
-          console.info('[dnr] Updating dynamic fixes rules...');
-
           const list = await fetch(`${ENGINE_CONFIGS_ROOT_URL}/dnr-fixes-v2/allowed-lists.json`, {
             // Force no caching if update was triggered by the user ("Update now" action)
             cache:
@@ -142,6 +190,8 @@ if (__CHROMIUM__) {
           );
 
           if (list.dnr.checksum !== resources.checksums[DNR_FIXES_KEY]) {
+            console.info('[dnr] Updating dynamic fixes rules...');
+
             const rules = new Set(
               await fetch(list.dnr.url).then((res) =>
                 res.ok
@@ -197,7 +247,7 @@ if (__CHROMIUM__) {
           // As a fallback we need to add static fixes rules.
           if (!removeRuleIds.length) {
             console.warn('[dnr] Falling back to static fixes rules');
-            ids.push('fixes');
+            nextRulesetIds.push('fixes');
 
             await store.set(Resources, {
               checksums: { [DNR_FIXES_KEY]: 'filesystem' },
@@ -212,7 +262,7 @@ if (__CHROMIUM__) {
         await chrome.declarativeNetRequest.updateDynamicRules({
           removeRuleIds,
         });
-        await store.set(resources, {
+        await store.set(Resources, {
           checksums: { [DNR_FIXES_KEY]: null },
         });
 
@@ -220,36 +270,14 @@ if (__CHROMIUM__) {
       }
     }
 
-    const enableRulesetIds = [];
-    const disableRulesetIds = [];
+    await updateStaticRulesets(nextRulesetIds);
+  }
 
-    for (const id of ids) {
-      if (!enabledRulesetIds.includes(id)) {
-        enableRulesetIds.push(id);
-      }
-    }
+  OptionsObserver.addListener(syncDNR);
 
-    for (const id of enabledRulesetIds) {
-      if (!ids.includes(id)) {
-        disableRulesetIds.push(id);
-      }
-    }
-
-    if (enableRulesetIds.length || disableRulesetIds.length) {
-      try {
-        await chrome.declarativeNetRequest.updateEnabledRulesets({
-          enableRulesetIds,
-          disableRulesetIds,
-        });
-        console.info('[dnr] Updated static rulesets:', ids.length ? ids.join(', ') : 'none');
-      } catch (e) {
-        console.error(`[dnr] Error while updating static rulesets:`, e);
-        captureException(e, { critical: true, once: true });
-      }
-
-      // The below will run when the extension is installed as
-      // well with the change of `options.terms`.
-      await Promise.all(enabledRulesetIds.map((id) => disableExcludedRulesByPreprocessor(id)));
-    }
+  // Re-sync rulesets when network filtering is toggled for the session (dev tools)
+  store.observe(FilteringDebug, async (_, debug, lastDebug) => {
+    if (!lastDebug || debug.network === lastDebug.network) return;
+    syncDNR(await store.resolve(Options));
   });
 }

@@ -13,6 +13,7 @@ import { store } from 'hybrids';
 
 import Options from '/store/options.js';
 import Config from '/store/config.js';
+import DailyStats from '/store/daily-stats.js';
 import asyncSetup from '/utils/setup.js';
 import * as OptionsObserver from '/utils/options-observer.js';
 import { getStorage, saveStorage } from '/utils/telemetry.js';
@@ -36,44 +37,69 @@ const setup = asyncSetup('telemetry', [
       EXTENSION_VERSION: version,
       storage: metrics,
       saveStorage,
-      getConf: async () => ({
-        options: await store.resolve(Options),
-        config: await store.resolve(Config),
-        userSettings: __CHROMIUM__ ? await chrome.action?.getUserSettings?.() : undefined,
-        isAllowedIncognitoAccess: await chrome.extension.isAllowedIncognitoAccess(),
-      }),
+      getConf: async () => {
+        const yesterdayId = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+        const [options, config, dailyStats] = await Promise.all([
+          store.resolve(Options),
+          store.resolve(Config),
+          store.resolve(DailyStats, yesterdayId),
+        ]);
+
+        return {
+          options,
+          config,
+          // Use the previous full UTC day so the bucket doesn't depend on
+          // the time-of-day at which the ping fires.
+          yesterdayPages: dailyStats.pages,
+          userSettings: __CHROMIUM__ ? await chrome.action?.getUserSettings?.() : undefined,
+          isAllowedIncognitoAccess: await chrome.extension.isAllowedIncognitoAccess(),
+        };
+      },
       log: console.debug.bind(console, '[telemetry]'),
     });
   })(),
 ]);
 
 let enabled = false;
-OptionsObserver.addListener(async function telemetry({ terms, feedback }) {
+OptionsObserver.addListener(async function telemetry({ terms, feedback }, lastOptions) {
+  // Update enabled state on every change
   enabled = terms && feedback;
+
+  // Skip the rest of the logic for sequential runs after the first one
+  // as the `terms` option can only by enabled once
+  if (lastOptions && lastOptions.terms) return;
+
+  if (runner.isJustInstalled()) {
+    await runner.setUTMs(await detectAttribution());
+  }
+
+  // We always go through uninstall url to measure bots
+  runner.setUninstallUrl();
 
   if (terms) {
     setup.pending && (await setup.pending);
 
-    if (runner.isJustInstalled()) {
-      try {
-        const attribution = await detectAttribution();
-        runner.storage.utm_source = attribution.utm_source || '';
-        runner.storage.utm_campaign = attribution.utm_campaign || '';
-        await saveStorage(runner.storage);
-      } catch (error) {
-        console.error('[telemetry] Error detecting attribution:', error);
-      }
-
-      runner.ping('install');
-    }
+    if (runner.isJustInstalled()) runner.ping('install');
 
     if (feedback) runner.ping('active');
-
-    runner.setUninstallUrl();
-  } else {
-    chrome.runtime.setUninstallURL('https://mygho.st/fresh-uninstalls');
   }
 });
+
+chrome.runtime.onInstalled.addListener((details) => {
+  (async () => {
+    setup.pending && (await setup.pending);
+    if (!runner) return;
+
+    await runner.setInstallReason(details.reason);
+  })();
+});
+
+export async function recordSerpVisit() {
+  setup.pending && (await setup.pending);
+  if (!runner) return;
+
+  await runner.recordSerpVisit();
+}
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (enabled && msg.action.startsWith('telemetry:')) {

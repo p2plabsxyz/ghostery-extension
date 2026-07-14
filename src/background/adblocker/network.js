@@ -13,6 +13,8 @@ import { store } from 'hybrids';
 import { filterRequestHTML, updateResponseHeadersWithCSP } from '@ghostery/adblocker-webextension';
 
 import Options, { getPausedDetails } from '/store/options.js';
+import DisabledFilters from '/store/disabled-filters.js';
+import FilteringDebug from '/store/filtering-debug.js';
 
 import * as exceptions from '/utils/exceptions.js';
 import * as engines from '/utils/engines.js';
@@ -50,6 +52,12 @@ if (__FIREFOX__) {
   }
 
   function isMatchableRequest(details, request) {
+    // Network filtering disabled for the session (dev tools)
+    const debug = store.get(FilteringDebug);
+    if (store.ready(debug) && !debug.network) {
+      return false;
+    }
+
     // Extension context request
     if (
       (details.tabId === -1 && details.url.startsWith('moz-extension://')) ||
@@ -80,27 +88,38 @@ if (__FIREFOX__) {
 
       if (isMatchableRequest(details, request)) {
         const engine = engines.get(engines.MAIN_ENGINE);
-        const { redirect, match } = engine.match(request);
+        const { redirect, match, filter } = engine.match(request);
 
-        if (match === true && details.type === 'main_frame') {
-          const options = store.get(Options);
-          const redirectUrl = getRedirectProtectionUrl(details.url, request.hostname, options);
+        const disabledFilters = store.get(DisabledFilters);
+        const filterDisabled =
+          filter && store.ready(disabledFilters) && disabledFilters.ids[filter.getId()];
 
-          return { redirectUrl };
-        } else if (redirect !== undefined) {
-          request.blocked = true;
-          // There's a possibility that redirecting to file URL can expose
-          // extension existence.
-          if (details.type !== 'xmlhttprequest') {
-            result = {
-              redirectUrl: chrome.runtime.getURL('rule_resources/redirects/' + redirect.filename),
-            };
-          } else {
-            result = { redirectUrl: redirect.dataUrl };
+        if (!filterDisabled) {
+          if (details.type === 'main_frame') {
+            // Skip type-less filters whose mask is FROM_ANY: Chrome MV3 DNR's
+            // safety default excludes main_frame for filters without an
+            // explicit resource type, and we mirror that here.
+            if (match === true && filter?.fromDocument() && !filter.fromAny()) {
+              const options = store.get(Options);
+              const redirectUrl = getRedirectProtectionUrl(details.url, request.hostname, options);
+
+              return { redirectUrl };
+            }
+          } else if (redirect !== undefined) {
+            request.blocked = true;
+            // There's a possibility that redirecting to file URL can expose
+            // extension existence.
+            if (details.type !== 'xmlhttprequest') {
+              result = {
+                redirectUrl: chrome.runtime.getURL('rule_resources/redirects/' + redirect.filename),
+              };
+            } else {
+              result = { redirectUrl: redirect.dataUrl };
+            }
+          } else if (match === true) {
+            request.blocked = true;
+            result = { cancel: true };
           }
-        } else if (match === true) {
-          request.blocked = true;
-          result = { cancel: true };
         }
       }
 

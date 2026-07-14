@@ -121,6 +121,19 @@ export default class Metrics {
     return !this.storage.install_all;
   }
 
+  async setUTMs({ utm_source = '', utm_campaign = '' }) {
+    this.storage.utm_source = utm_source;
+    this.storage.utm_campaign = utm_campaign;
+    await this.saveStorage(this.storage);
+  }
+
+  async setInstallReason(reason) {
+    // Freeze the reason once install has pinged so later update events don't overwrite it.
+    if (this.storage.install_all || this.storage.installReason === reason) return;
+    this.storage.installReason = reason;
+    await this.saveStorage(this.storage);
+  }
+
   /**
    * Prepare data and send telemetry pings.
    * @param {string} type    type of the telemetry ping
@@ -193,8 +206,6 @@ export default class Metrics {
       buildQueryPair('bv', browserInfo.version) +
       // Date of install (former install_date)
       buildQueryPair('id', this.storage.installDate) +
-      // Toolbar pinned
-      buildQueryPair('tp', Number(conf.userSettings?.isOnToolbar ?? -1)) +
       // ZAP mode (-1 = flag disabled, 0 = default, 1 = zap, 2 = default + touched, 3 = zap + touched)
       buildQueryPair(
         'zap',
@@ -208,28 +219,38 @@ export default class Metrics {
               ? '1'
               : '0',
       ) +
-      buildQueryPair('aia', conf.isAllowedIncognitoAccess ? '1' : '0');
+      // Onboarding complete
+      buildQueryPair('oc', this.storage.install_complete_all ? '1' : '0') +
+      // Feedback state
+      buildQueryPair('hw', conf.options.terms && conf.options.feedback ? '1' : '0') +
+      // 'na' here flags an install ping with no fresh-install lifecycle event
+      buildQueryPair('rsn', this.storage.installReason || 'na');
 
     if (type !== 'uninstall') {
       metrics_url +=
+        // Toolbar pinned
+        buildQueryPair('tp', Number(conf.userSettings?.isOnToolbar ?? -1)) +
+        // Allowed Incognito Access
+        buildQueryPair('aia', conf.isAllowedIncognitoAccess ? '1' : '0') +
         // Adblocking state
         buildQueryPair('ab', conf.options.blockAds ? '1' : '0') +
         // Smartblocking state
         buildQueryPair('sm', conf.options.blockAnnoyances ? '1' : '0') +
         // Antitracking state
         buildQueryPair('at', conf.options.blockTrackers ? '1' : '0') +
-        // Recency, days since last active daily ping
+        // Page views yesterday (0=none, 1=<10, 2=>=10)
         // prettier-ignore
+        buildQueryPair('pv', conf.yesterdayPages >= 10 ? '2' : conf.yesterdayPages > 0 ? '1' : '0') +
+        // SERP visits yesterday (0=none, 1=<10, 2=>=10)
+        buildQueryPair('se', this._getSearchSignal()) +
+        // Recency, days since last active daily ping
         buildQueryPair('rc', this._getRecencyActive(type, frequency).toString()) +
         // Active Velocity
         buildQueryPair('va', this._getVelocityActive(type).toString()) +
         // Engaged Recency
-        // prettier-ignore
-        buildQueryPair('re',this._getRecencyEngaged(type, frequency).toString()) +
+        buildQueryPair('re', this._getRecencyEngaged(type, frequency).toString()) +
         // Engaged Velocity
-        buildQueryPair('ve', this._getVelocityEngaged(type).toString()) +
-        // Feedback state
-        buildQueryPair('hw', conf.options.feedback ? '1' : '0');
+        buildQueryPair('ve', this._getVelocityEngaged(type).toString());
     }
 
     if (CAMPAIGN_METRICS.includes(type)) {
@@ -406,6 +427,47 @@ export default class Metrics {
     const engaged_daily_velocity = this.storage.engaged_daily_velocity || [];
     const today = Math.floor(Date.now() / 86400000);
     return engaged_daily_velocity.filter((el) => el > today - 7).length;
+  }
+
+  /**
+   * Get the SERP visit signal for the previous full UTC day.
+   * Using yesterday avoids bias from the time-of-day at which the
+   * ping fires, since today's counter is mid-aggregation.
+   * @private
+   * @return {string} '0' = no visits, '1' = less than 10, '2' = 10 or more
+   */
+  _getSearchSignal() {
+    const yesterday = Math.floor(Date.now() / 86400000) - 1;
+    let count = 0;
+
+    if (this.storage.serpCountPrevDay === yesterday) {
+      count = this.storage.serpCountPrev || 0;
+    } else if (this.storage.serpCountDay === yesterday) {
+      // No SERP visit happened today yet, so yesterday's total is still
+      // sitting in the current-day counter.
+      count = this.storage.serpCount || 0;
+    }
+
+    return count >= 10 ? '2' : count > 0 ? '1' : '0';
+  }
+
+  /**
+   * Count a SERP visit for today. Rolls the current day's counter
+   * into `serpCountPrev` when the UTC day changes.
+   */
+  async recordSerpVisit() {
+    const today = Math.floor(Date.now() / 86400000);
+
+    if (this.storage.serpCountDay !== today) {
+      this.storage.serpCountPrev = this.storage.serpCount || 0;
+      this.storage.serpCountPrevDay = this.storage.serpCountDay;
+      this.storage.serpCountDay = today;
+      this.storage.serpCount = 1;
+    } else {
+      this.storage.serpCount = (this.storage.serpCount || 0) + 1;
+    }
+
+    await this.saveStorage(this.storage);
   }
 
   /**

@@ -82,7 +82,7 @@ async function refreshIcon(tabId) {
   const stats = tabStats.get(tabId);
   if (!stats) return;
 
-  const paused = !!getPausedDetails(options, stats.hostname);
+  const paused = stats.hostname ? !!getPausedDetails(options, stats.hostname) : false;
   const inactive = options.mode !== MODE_ZAP && (!options.terms || paused);
 
   const data = {};

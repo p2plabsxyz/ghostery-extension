@@ -65,10 +65,21 @@ chrome.runtime.onConnect.addListener(async (port) => {
       setup.pending && (await setup.pending);
 
       const organizations = await getOrganizations();
-      const engine = engines.get(engines.MAIN_ENGINE);
+      let engine = engines.get(engines.MAIN_ENGINE);
 
-      const logFilterMatched = function ({ filter }, { url, request, filterType, callerContext }) {
-        if (filterType === FilterType.COSMETIC && filter.isScriptInject()) {
+      const logFilterMatched = function (
+        { filter, exception: matchedException },
+        { url, request, filterType, callerContext },
+      ) {
+        const matched = filter || matchedException;
+        if (!matched) return;
+
+        const filterId = matched.getId();
+        const isException =
+          !!matchedException ||
+          (filterType === FilterType.COSMETIC ? matched.isUnhide() : matched.isException());
+
+        if (filter && filterType === FilterType.COSMETIC && filter.isScriptInject()) {
           filter = String(filter);
           const scriptInjectArgumentIndex = filter.indexOf('+js(') + 4; /* '+js('.length */
           filter =
@@ -76,10 +87,17 @@ chrome.runtime.onConnect.addListener(async (port) => {
             decodeURIComponent(filter.slice(scriptInjectArgumentIndex, -1)) +
             ')';
         } else {
-          filter = String(filter);
+          filter = String(matched);
         }
 
-        let data = { filter, filterType, url, tabId: callerContext?.tabId };
+        let data = {
+          filter,
+          filterId,
+          filterType,
+          exception: isException,
+          url,
+          tabId: callerContext?.tabId,
+        };
 
         if (filterType === FilterType.COSMETIC) {
           Object.assign(data, {
@@ -102,11 +120,18 @@ chrome.runtime.onConnect.addListener(async (port) => {
 
       engine.on('filter-matched', logFilterMatched);
 
+      const unsubscribeSaveListener = engines.addSaveListener(engines.MAIN_ENGINE, (nextEngine) => {
+        engine.unsubscribe('filter-matched', logFilterMatched);
+        engine = nextEngine;
+        engine.on('filter-matched', logFilterMatched);
+      });
+
       port.onDisconnect.addListener(() => {
         ports.delete(port);
         console.log('[logger] Disconnected logger with id', port.sender.tab.id);
 
         if (ports.size === 0) {
+          unsubscribeSaveListener();
           engine.unsubscribe('filter-matched', logFilterMatched);
         }
       });

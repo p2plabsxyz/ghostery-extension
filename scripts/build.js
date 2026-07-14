@@ -30,7 +30,7 @@ const pwd = process.cwd();
 const options = {
   srcDir: resolve(pwd, 'src'),
   outDir: resolve(pwd, 'dist'),
-  assets: ['_locales', 'icons', 'static_pages'],
+  assets: ['_locales', 'icons', 'static_pages', 'background/rule_resources'],
   pages: ['dnr-converter', 'logger', 'onboarding', 'whotracksme'],
 };
 
@@ -56,8 +56,35 @@ const argv = process.argv.slice(2).reduce(
     silent: false,
     clean: false,
     watch: false,
+    automation: false,
   },
 );
+
+if (process.platform === 'win32') {
+  argv['no-filename-limit'] = true;
+}
+
+// --- Automation patch ---
+function applyAutomationPatch(distDir) {
+  const manifestPath = resolve(distDir, 'manifest.json');
+  const m = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  m.name = 'Ghostery (Automation)';
+  m.short_name = 'Ghostery Automation';
+  writeFileSync(manifestPath, JSON.stringify(m, null, 2) + '\n');
+
+  const mcPath = resolve(distDir, 'store/managed-config.js');
+  const mc = readFileSync(mcPath, 'utf8');
+  const patched = mc.replace(/(disableOnboarding:\s*)false/, '$1true');
+  if (patched === mc) {
+    throw new Error('automation patch: did not find `disableOnboarding: false` in ' + mcPath);
+  }
+  writeFileSync(mcPath, patched);
+  if (!silent) {
+    console.log(
+      '--automation: patched manifest (Ghostery Automation) + managed-config (disableOnboarding=true)',
+    );
+  }
+}
 
 const pkg = JSON.parse(readFileSync(resolve(pwd, 'package.json'), 'utf8'));
 const silent = argv.silent;
@@ -140,7 +167,7 @@ if (!existsSync(licensesPath)) {
 // privacy-policy.html...
 if (argv.target !== 'firefox') {
   const policyPath = resolve(staticPath, 'privacy-policy.html');
-  const url = `https://www.${argv.debug ? 'ghosterystage' : 'ghostery'}.com/privacy-policy?embed=true`;
+  const url = `https://www.${argv.debug ? 'ghosterystage' : 'ghostery'}.com/privacy/policy?embed=true`;
 
   if (!existsSync(policyPath)) {
     const policy = await fetch(url);
@@ -304,13 +331,13 @@ const redirectResources = readdirSync(resolve(options.outDir, 'rule_resources/re
 
 if (manifest.manifest_version === 3) {
   manifest.web_accessible_resources.push({
-    resources: redirectResources.map((filename) => join('rule_resources/redirects', filename)),
+    resources: redirectResources.map((filename) => 'rule_resources/redirects/' + filename),
     matches: ['<all_urls>'],
     use_dynamic_url: true,
   });
 } else {
   redirectResources.forEach((filename) => {
-    manifest.web_accessible_resources.push(join('rule_resources/redirects', filename));
+    manifest.web_accessible_resources.push('rule_resources/redirects/' + filename);
   });
 }
 
@@ -349,7 +376,7 @@ manifest.web_accessible_resources?.forEach((entry) => {
   }
 
   paths.forEach((path) => {
-    if (path.includes('/redirects/')) return;
+    if (path.replace(/\\/g, '/').includes('/redirects/')) return;
 
     if (path.match(/\.(html)$/)) {
       source.push(path);
@@ -379,6 +406,71 @@ writeFileSync(resolve(options.outDir, 'manifest.json'), JSON.stringify(manifest,
 
 // --- Build  ---
 
+function rewriteVirtualModulePath(specifier) {
+  return specifier
+    .replace(/virtual\/C_[^"']+?\/npm\//g, 'npm/')
+    .replace(/virtual\/C_[^"']+?\/src\//g, '');
+}
+
+function findNestedDir(root, name) {
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const full = join(root, entry.name);
+    if (entry.name === name) return full;
+    const nested = findNestedDir(full, name);
+    if (nested) return nested;
+  }
+  return null;
+}
+
+function normalizeDistModulePaths(outDir) {
+  const virtualRoot = join(outDir, 'virtual');
+  if (!existsSync(virtualRoot)) return;
+
+  const rolldownRuntime = join(virtualRoot, '_rolldown', 'runtime.js');
+  const rolldownRuntimeCode = existsSync(rolldownRuntime)
+    ? readFileSync(rolldownRuntime, 'utf8')
+    : null;
+
+  const npmSrc = findNestedDir(virtualRoot, 'npm');
+  if (npmSrc) {
+    cpSync(npmSrc, join(outDir, 'npm'), { recursive: true });
+  }
+
+  const walkJs = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name === 'virtual') continue;
+        walkJs(full);
+      } else if (entry.name.endsWith('.js')) {
+        const code = readFileSync(full, 'utf8');
+        const next = rewriteVirtualModulePath(code);
+        if (next !== code) writeFileSync(full, next);
+      }
+    }
+  };
+
+  walkJs(outDir);
+  rmSync(virtualRoot, { recursive: true, force: true });
+
+  if (rolldownRuntimeCode) {
+    const dest = join(outDir, 'virtual', '_rolldown', 'runtime.js');
+    mkdirSync(dirname(dest), { recursive: true });
+    writeFileSync(dest, rolldownRuntimeCode);
+  }
+}
+
+function stripVirtualChunkName(name) {
+  let stripped = rewriteVirtualModulePath(name);
+  const cwdVirtual = 'virtual/' + process.cwd().replace(/:\\?/, '_/').replace(/\\/g, '/');
+  const virtualSrc = cwdVirtual + '/src/';
+  const virtualNm = cwdVirtual + '/node_modules/';
+  if (stripped.startsWith(virtualSrc)) stripped = stripped.slice(virtualSrc.length);
+  if (stripped.startsWith(virtualNm)) stripped = 'npm/' + stripped.slice(virtualNm.length);
+  return stripped;
+}
+
 function mapPaths(paths) {
   return paths.reduce((acc, src) => {
     acc[src.replace(/\.js/, '')] = src.startsWith('node_modules')
@@ -386,6 +478,69 @@ function mapPaths(paths) {
       : resolve(options.srcDir, src);
     return acc;
   }, {});
+}
+
+const PATH_LIMIT = 110;
+const MIN_SHORTEN_BASE = 6;
+
+function splitSegment(segment) {
+  const dotIdx = segment.lastIndexOf('.');
+  if (dotIdx <= 0) return { base: segment, ext: '' };
+  return { base: segment.slice(0, dotIdx), ext: segment.slice(dotIdx) };
+}
+
+let shortNameCounter = 0;
+const shortNameBySegment = new Map();
+const originalByOutput = new Map();
+
+// Rename the longest segments to short counter values: "0", "1", ..., "z", "10", ...
+function shortenPath(path, limit) {
+  const segments = path.split('/');
+
+  while (segments.join('/').length > limit) {
+    let longestIdx = -1;
+    let longestLength = MIN_SHORTEN_BASE;
+
+    for (let i = 0; i < segments.length; i++) {
+      const { base } = splitSegment(segments[i]);
+      if (base.length > longestLength) {
+        longestLength = base.length;
+        longestIdx = i;
+      }
+    }
+
+    if (longestIdx === -1) break;
+
+    const segment = segments[longestIdx];
+    let short = shortNameBySegment.get(segment);
+    if (short === undefined) {
+      short = (shortNameCounter++).toString(36) + splitSegment(segment).ext;
+      shortNameBySegment.set(segment, short);
+    }
+    segments[longestIdx] = short;
+  }
+
+  return segments.join('/');
+}
+
+// If a short name collides with a real file, append "-1", "-2", ... until unique.
+function makeUnique(path, original) {
+  const taken = (candidate) =>
+    originalByOutput.has(candidate) && originalByOutput.get(candidate) !== original;
+
+  if (!taken(path)) return path;
+
+  const slash = path.lastIndexOf('/');
+  const dir = path.slice(0, slash + 1);
+  const { base, ext } = splitSegment(path.slice(slash + 1));
+
+  let suffix = 1;
+  let candidate = `${dir}${base}-${suffix}${ext}`;
+  while (taken(candidate)) {
+    suffix += 1;
+    candidate = `${dir}${base}-${suffix}${ext}`;
+  }
+  return candidate;
 }
 
 const buildPromise = build({
@@ -406,23 +561,49 @@ const buildPromise = build({
       output: {
         dir: options.outDir,
         preserveModules: true,
-        preserveModulesRoot: 'src',
+        preserveModulesRoot: options.srcDir.replace(/\\/g, '/'),
         virtualDirname: 'virtual',
         minifyInternalExports: false,
         entryFileNames: (chunk) =>
-          `${chunk.name.replace(/\.(png|jpg|jpeg|gif|svg|webp)$/, '').replace(/\?[^.]*$/, '')}.js`,
-
-        assetFileNames: 'assets/[name]-[hash].[ext]',
+          `${stripVirtualChunkName(chunk.name)
+            .replace(/\.(png|jpg|jpeg|gif|svg|webp)$/, '')
+            .replace(/\?[^.]*$/, '')}.js`,
+        chunkFileNames: (chunk) =>
+          `${stripVirtualChunkName(chunk.name)
+            .replace(/\.(png|jpg|jpeg|gif|svg|webp)$/, '')
+            .replace(/\?[^.]*$/, '')}.js`,
+        assetFileNames: (assetInfo) => {
+          const name = stripVirtualChunkName(
+            assetInfo.name || (assetInfo.names && assetInfo.names[0]) || '',
+          );
+          return `assets/${name.replace(/\//g, '-')}-[hash].[ext]`;
+        },
         sanitizeFileName: (name) => {
           name = name
             .replace(/[\0?*]+/g, '_')
             .replace(/["<>:|]/g, '_')
             .replace(/node_modules/g, 'npm');
 
-          const path = name.replace(pwd, '');
-          if (path.length > 110 && !argv['no-filename-limit']) {
+          const hasPwd = name.startsWith(pwd);
+          const original = hasPwd ? name.slice(pwd.length) : name;
+          let relPath = original;
+
+          if (relPath.length > PATH_LIMIT) {
+            relPath = makeUnique(shortenPath(relPath, PATH_LIMIT), original);
+            name = hasPwd ? pwd + relPath : relPath;
+          }
+
+          const claimed = originalByOutput.get(relPath);
+          if (claimed !== undefined && claimed !== original) {
             throw new Error(
-              `Filename too long: ${path} (${path.length}) (pass --no-filename-limit to disable; for instance, "npm run build -- --no-filename-limit")`,
+              `Path collision: "${original}" and "${claimed}" both map to "${relPath}"`,
+            );
+          }
+          originalByOutput.set(relPath, original);
+
+          if (relPath.length > PATH_LIMIT && !argv['no-filename-limit']) {
+            throw new Error(
+              `Filename too long: ${relPath} (${relPath.length}) (pass --no-filename-limit to disable; for instance, "npm run build -- --no-filename-limit")`,
             );
           }
 
@@ -434,6 +615,24 @@ const buildPromise = build({
   plugins: [
     ...config.plugins,
 
+    {
+      name: 'shortened-path-banner',
+      buildStart() {
+        shortNameCounter = 0;
+        shortNameBySegment.clear();
+        originalByOutput.clear();
+      },
+      generateBundle(_, bundle) {
+        for (const [fileName, chunk] of Object.entries(bundle)) {
+          if (chunk.type !== 'chunk') continue;
+          const outputPath = '/' + fileName;
+          const original = originalByOutput.get(outputPath);
+          if (original && original !== outputPath) {
+            chunk.code = `/* original: ${original} */\n` + chunk.code;
+          }
+        }
+      },
+    },
     // Keep offscreen documents from @whotracksme/reporting
     {
       name: 'copy-reporting-assets',
@@ -523,6 +722,7 @@ const buildPromise = build({
 
 // --- Build content scripts ---
 
+const contentScriptBuilds = [];
 for (const [id, path] of Object.entries(mapPaths(content_scripts))) {
   // Copy assets
   if (!path.endsWith('.js')) {
@@ -532,23 +732,31 @@ for (const [id, path] of Object.entries(mapPaths(content_scripts))) {
     cpSync(path, resolve(options.outDir, id));
   } else {
     // build content scripts
-    build({
-      ...config,
-      build: {
-        ...config.build,
-        target: 'esnext',
-        rolldownOptions: {
-          ...config.build.rolldownOptions,
-          input: { [id]: path },
-          output: {
-            format: 'iife',
-            dir: options.outDir,
-            entryFileNames: '[name].js',
+    contentScriptBuilds.push(
+      build({
+        ...config,
+        build: {
+          ...config.build,
+          target: 'esnext',
+          rolldownOptions: {
+            ...config.build.rolldownOptions,
+            input: { [id]: path },
+            output: {
+              format: 'iife',
+              dir: options.outDir,
+              entryFileNames: '[name].js',
+            },
           },
         },
-      },
-    });
+      }),
+    );
   }
+}
+
+if (argv.automation && !argv.watch) {
+  await Promise.all([buildPromise, ...contentScriptBuilds]);
+  normalizeDistModulePaths(options.outDir);
+  applyAutomationPatch(options.outDir);
 }
 
 if (argv.watch) {
@@ -556,6 +764,7 @@ if (argv.watch) {
     watchEmitter.on('event', function callback(e) {
       if (e.code === 'BUNDLE_END') {
         watchEmitter.off('event', callback);
+        normalizeDistModulePaths(options.outDir);
 
         let settings;
         switch (argv.target) {
@@ -600,4 +809,8 @@ if (argv.watch) {
       }
     }),
   );
+} else if (!argv.automation) {
+  await buildPromise;
+  await Promise.all(contentScriptBuilds);
+  normalizeDistModulePaths(options.outDir);
 }

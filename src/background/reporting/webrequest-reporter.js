@@ -15,6 +15,7 @@ import { ACTION_DISABLE_ANTITRACKING_MODIFICATION } from '@ghostery/config';
 
 import Options, { getPausedDetails } from '/store/options.js';
 import Config from '/store/config.js';
+import FilteringDebug from '/store/filtering-debug.js';
 
 import Request from '/utils/request.js';
 
@@ -22,7 +23,7 @@ import { updateTabStats } from '../stats.js';
 
 import config from './config.js';
 import communication from './communication.js';
-import urlReporter from './url-reporter.js';
+import urlReporter, { pauseState } from './url-reporter.js';
 
 let webRequestReporter = null;
 
@@ -37,9 +38,15 @@ if (chrome.webRequest) {
       onMessageReady: urlReporter.forwardRequestReporterMessage.bind(urlReporter),
       countryProvider: urlReporter.countryProvider,
       trustedClock: communication.trustedClock,
+      pauseState,
       isRequestAllowed: (state) => {
         const options = store.get(Options);
         const hostname = state.tabUrlParts.hostname;
+
+        const debug = store.get(FilteringDebug);
+        if (store.ready(debug) && !debug.antitracking) {
+          return true;
+        }
 
         return (
           !options.blockTrackers ||
