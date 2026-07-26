@@ -20,15 +20,12 @@ import * as wdio from './wdio.conf.js';
 import { setupTestPage } from './page/server.js';
 
 /**
- * Fork remotes (e.g. p2plabsxyz) may only tag packaging builds like v1.1.0.
- * Update tests must download a real Ghostery upstream zip, so only accept tags
- * that match package.json's major version and otherwise use package.json itself.
+ * Update tests download a published zip from ghostery/ghostery-extension.
+ * Peersky packaging versions (v1.x) are not on that repo — always use the
+ * latest upstream v10.x tag as the baseline.
  */
 function resolveUpdateVersion() {
   if (wdio.argv.version) return String(wdio.argv.version);
-
-  const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));
-  const pkgMajor = Number(String(pkg.version).split('.')[0]);
 
   try {
     execSync('git fetch --tags --quiet', { stdio: 'ignore' });
@@ -40,17 +37,15 @@ function resolveUpdateVersion() {
     const tag = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
       .split(/\r?\n/)
       .map((t) => t.trim())
-      .find((t) => {
-        const match = /^v(\d+)\.\d+\.\d+$/.exec(t);
-        return match && Number(match[1]) === pkgMajor;
-      });
+      .find((t) => /^v10\.\d+\.\d+$/.test(t));
     if (tag) return tag.slice(1);
   } catch {
-    // Continue to the package.json fallback below.
+    // Continue to the fallback below.
   }
 
-  // package.json tracks the Ghostery upstream version that has release assets.
-  return pkg.version;
+  throw new Error(
+    'Could not find an upstream Ghostery v10.x tag for the update-test baseline.',
+  );
 }
 
 /*
