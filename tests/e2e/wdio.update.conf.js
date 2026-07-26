@@ -20,37 +20,38 @@ import * as wdio from './wdio.conf.js';
 import { setupTestPage } from './page/server.js';
 
 /**
- * Fork remotes (e.g. p2plabsxyz) may only tag packaging builds like v1.1.0.
- * Update tests must download a real Ghostery upstream zip, so only accept tags
- * that match package.json's major version and otherwise use package.json itself.
+ * Update tests download a published zip from ghostery/ghostery-extension.
+ * Fork remotes only have packaging tags (v1.x), so pull upstream v10.x tags
+ * (or fall back to a known published release).
  */
 function resolveUpdateVersion() {
   if (wdio.argv.version) return String(wdio.argv.version);
 
-  const pkg = JSON.parse(readFileSync(resolve(process.cwd(), 'package.json'), 'utf8'));
-  const pkgMajor = Number(String(pkg.version).split('.')[0]);
-
+  // Fork CI checkouts do not include upstream tags — fetch them explicitly.
   try {
-    execSync('git fetch --tags --quiet', { stdio: 'ignore' });
+    execSync('git fetch --tags --quiet https://github.com/ghostery/ghostery-extension.git', {
+      stdio: 'ignore',
+    });
   } catch {
-    // Offline / shallow clone — use whatever tags are already local.
+    try {
+      execSync('git fetch --tags --quiet', { stdio: 'ignore' });
+    } catch {
+      // Use whatever tags are already local / the hardcoded fallback below.
+    }
   }
 
   try {
     const tag = execSync('git tag --sort=-version:refname', { encoding: 'utf8' })
       .split(/\r?\n/)
       .map((t) => t.trim())
-      .find((t) => {
-        const match = /^v(\d+)\.\d+\.\d+$/.exec(t);
-        return match && Number(match[1]) === pkgMajor;
-      });
+      .find((t) => /^v10\.\d+\.\d+$/.test(t));
     if (tag) return tag.slice(1);
   } catch {
-    // Continue to the package.json fallback below.
+    // Continue to the fallback below.
   }
 
-  // package.json tracks the Ghostery upstream version that has release assets.
-  return pkg.version;
+  // Known published upstream release with Firefox/Chromium assets.
+  return '10.5.51';
 }
 
 /*
