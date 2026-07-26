@@ -21,16 +21,23 @@ import { setupTestPage } from './page/server.js';
 
 /**
  * Update tests download a published zip from ghostery/ghostery-extension.
- * Peersky packaging versions (v1.x) are not on that repo — always use the
- * latest upstream v10.x tag as the baseline.
+ * Fork remotes only have packaging tags (v1.x), so pull upstream v10.x tags
+ * (or fall back to a known published release).
  */
 function resolveUpdateVersion() {
   if (wdio.argv.version) return String(wdio.argv.version);
 
+  // Fork CI checkouts do not include upstream tags — fetch them explicitly.
   try {
-    execSync('git fetch --tags --quiet', { stdio: 'ignore' });
+    execSync('git fetch --tags --quiet https://github.com/ghostery/ghostery-extension.git', {
+      stdio: 'ignore',
+    });
   } catch {
-    // Offline / shallow clone — use whatever tags are already local.
+    try {
+      execSync('git fetch --tags --quiet', { stdio: 'ignore' });
+    } catch {
+      // Use whatever tags are already local / the hardcoded fallback below.
+    }
   }
 
   try {
@@ -43,9 +50,8 @@ function resolveUpdateVersion() {
     // Continue to the fallback below.
   }
 
-  throw new Error(
-    'Could not find an upstream Ghostery v10.x tag for the update-test baseline.',
-  );
+  // Known published upstream release with Firefox/Chromium assets.
+  return '10.5.51';
 }
 
 /*
